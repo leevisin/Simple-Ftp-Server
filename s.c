@@ -37,7 +37,6 @@ int main(int argc, char** argv){
     int  server_sockfd, client_sockfd;
     struct sockaddr_in  server_addr, client_addr;
 
-
     if( (server_sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1 ){
         printf("create socket error: %s(errno: %d)\n",strerror(errno),errno);
         return 0;
@@ -90,19 +89,19 @@ int main(int argc, char** argv){
 			pass_len = sizeof(buffer);			
 			printf("\nReceive password: %s", buffer);
 			if(strncmp(buffer,"PASS 123456",11)!=0){
-			memset(buffer,0,sizeof(buffer));
-   			send(client_sockfd, Wrongpass, sizeof(Wrongpass), 0);
-			while(1){
 				memset(buffer,0,sizeof(buffer));
-        		int errorlen = recv(client_sockfd, buffer, sizeof(buffer),0);
-        		printf("from client:%s\n",buffer);
-        		if(strncmp(buffer,"QUIT",4)==0){
-		        	send(client_sockfd, Quitout, sizeof(Quitout), 0);
-		        	flag_pass=0;
-		        	break;
-		        }
-		        send(client_sockfd, Afterwrong, sizeof(Afterwrong), 0);
-			}
+				send(client_sockfd, Wrongpass, sizeof(Wrongpass), 0);
+				while(1){
+					memset(buffer,0,sizeof(buffer));
+					int errorlen = recv(client_sockfd, buffer, sizeof(buffer),0);
+					printf("from client:%s\n",buffer);
+					if(strncmp(buffer,"QUIT",4)==0){
+						send(client_sockfd, Quitout, sizeof(Quitout), 0);
+						flag_pass=0;
+						break;
+					}
+					send(client_sockfd, Afterwrong, sizeof(Afterwrong), 0);
+				}
 			}
 			char succ[] ="230 Login in successful\r\n";//need to add check system
 			char sysback[19] = "215 UNIX Type: L8\r\n";
