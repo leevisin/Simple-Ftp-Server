@@ -25,7 +25,21 @@
 #define BUFFER_MAX 1024
 #define SUCCESS 0
 
+#define Entername "220 please enter username\r\n"
+#define Enterpass "331 please enter password\r\n"
+#define Wrongpass "530 Login incorrect\r\n"
+#define Afterwrong "530 Please login with USER and PASS\r\n" 
+#define Quitout "221 Goodbye\r\n"
+#define Activeport "200 PORT command successful\r\n"
+#define LSITCODE "150 Here comes the directory listing\r\n"
+#define listfinish "226 Directory send OK\r\n"
+#define get_open_succ "150 Openning data connection\r\n"
+#define getfinish "226 Transfer complete\r\n"
+#define succ "230 Login in successful\r\n"
+#define sysback "215 UNIX Type: L8\r\n"
+
 char* SERVER_IP = "127.0.0.1";
+int tcp_server();
 void do_ls(char [],int);
 void do_stat(char*,int);
 void show_file_info(char* ,struct stat*,int);
@@ -35,82 +49,55 @@ char* gid_to_name(gid_t);
 int delete_sub_str(const char *str, const char *sub_str, char *result_str);
 
 int main(int argc, char** argv){
-    int  server_sockfd, client_sockfd;
-    struct sockaddr_in  server_addr, client_addr;
 
-    if( (server_sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1 ){
-        printf("create socket error: %s(errno: %d)\n",strerror(errno),errno);
-        return 0;
-    }
-
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    server_addr.sin_port = htons(PORT1);
-	
-    if( bind(server_sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1){
-        printf("bind socket error: %s(errno: %d)\n",strerror(errno),errno);
-        return 0;
+    // 使用root权限运行
+    if(getuid())
+    {
+        fprintf(stderr, "FtpServer must be started by root\n");
+        exit(-1);
     }
 
-    if( listen(server_sockfd, 10) == -1){
-        printf("listen socket error: %s(errno: %d)\n",strerror(errno),errno);
-        return 0;
-    }
-        printf("======waiting for client's request======\n");
-		char buffer[BUFFER_MAX];
-        socklen_t socket_len = sizeof(client_addr);
-    if( (client_sockfd = accept(server_sockfd, (struct sockaddr*)&client_addr, &socket_len)) == -1){
-            printf("accept socket error: %s(errno: %d)",strerror(errno),errno);
-            exit(1);
-    }
+    int server_sockfd, client_sockfd;
+    struct sockaddr_in server_addr, client_addr;
+
+    //创建一个监听fd
+    server_sockfd = tcp_server();
+
     
-    printf("Accept client %s on TCP port %d\n", inet_ntoa(client_addr.sin_addr),ntohs(client_addr.sin_port));
-			char Entername[] = "220 please enter username\r\n";
-			char Enterpass[] = "331 please enter password\r\n";
-			char Wrongpass[] = "530 Login incorrect\r\n";
-			char Afterwrong[]= "530 Please login with USER and PASS\r\n"; 
-			char Quitout[]   = "221 Goodbye\r\n";
-			char Activeport[]= "200 PORT command successful\r\n";
-			char LSITCODE[]  = "150 Here comes the directory listing\r\n";
-			char listfinish[]= "226 Directory send OK\r\n";
-			char get_open_succ[]="150 Openning data connection\r\n";
-			char getfinish[] = "226 Transfer complete\r\n";
+    printf("Welcom to use FTP, waiting for client's requests.\n");
 
-			int flag_pass = 1;
+    char buffer[BUFFER_MAX];
+    socklen_t socket_len = sizeof(client_addr);
+    if((client_sockfd = accept(server_sockfd, (struct sockaddr*)&client_addr, &socket_len)) == -1){
+            printf("accept socket error: %s(errno: %d)",strerror(errno),errno);
+            exit(-1);
+    }
+    printf("Accept client %s on TCP port %d\n", inet_ntoa(client_addr.sin_addr),ntohs(client_addr.sin_port));
+    
+    int flag_pass = 1;
 			
-			memset(buffer,0,sizeof(buffer));
-	    	send(client_sockfd, Entername, sizeof(Entername), 0);
-   			recv(client_sockfd, buffer, sizeof(buffer),0);
-   			printf("\nReceive username: %s",buffer);
-   			
-			memset(buffer,0,sizeof(buffer));
-   			send(client_sockfd, Enterpass, sizeof(Enterpass), 0);
-			recv(client_sockfd,buffer,sizeof(buffer),0);
+    memset(buffer,0,sizeof(buffer));
+    send(client_sockfd, Entername, sizeof(Entername), 0);
+    recv(client_sockfd, buffer, sizeof(buffer),0);
+    printf("\nReceive username: %s",buffer);
+    
+    memset(buffer,0,sizeof(buffer));
+    send(client_sockfd, Enterpass, sizeof(Enterpass), 0);
+    recv(client_sockfd,buffer,sizeof(buffer),0);
 	
-			printf("\nReceive password: %s", buffer);
-			if(strncmp(buffer,"PASS 123456",11)!=0){
-				memset(buffer,0,sizeof(buffer));
-				send(client_sockfd, Wrongpass, sizeof(Wrongpass), 0);
-				while(1){
-					memset(buffer,0,sizeof(buffer));
-					recv(client_sockfd, buffer, sizeof(buffer),0);
-					printf("from client:%s\n",buffer);
-					if(strncmp(buffer,"QUIT",4)==0){
-						send(client_sockfd, Quitout, sizeof(Quitout), 0);
-						flag_pass=0;
-						break;
-					}
-					send(client_sockfd, Afterwrong, sizeof(Afterwrong), 0);
-				}
-			}
-			char succ[] ="230 Login in successful\r\n";//need to add check system
-			char sysback[19] = "215 UNIX Type: L8\r\n";
-			send(client_sockfd, succ , sizeof(succ), 0);
-			int sys = recv(client_sockfd, buffer, sizeof(buffer),0);
-			if(strncmp(buffer,"SYST",4)==0 || sys<=0){
-				send(client_sockfd, sysback , sizeof(sysback), 0);
-			}
-			
+    printf("\nReceive password: %s", buffer);
+    if(strncmp(buffer,"PASS 123456",11)!=0){
+        memset(buffer,0,sizeof(buffer));
+        send(client_sockfd, Wrongpass, sizeof(Wrongpass), 0);
+    }
+
+    memset(buffer,0,sizeof(buffer));
+    send(client_sockfd, succ, sizeof(succ), 0);
+    int sys = recv(client_sockfd, buffer, sizeof(buffer),0);
+    printf("buff: %s", buffer);
+    if(strncmp(buffer,"SYST ",4)==0 || sys<=0){
+        send(client_sockfd, sysback , sizeof(sysback), 0);
+    }
 
     while(flag_pass){
        
@@ -234,6 +221,32 @@ int main(int argc, char** argv){
          close(server_sockfd);
          close(client_sockfd);
     return 0;
+}
+
+int tcp_server(){
+    int listenfd;
+    struct sockaddr_in seraddr;
+
+    //创建一个监听fd
+    if((listenfd = socket(AF_INET, SOCK_STREAM, 0)) == -1){
+        printf("create socket error: %s(errno: %d)\n",strerror(errno),errno);
+        return 0;
+    }
+
+    seraddr.sin_family = AF_INET;
+    seraddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    seraddr.sin_port = htons(PORT1);
+	
+    if(bind(listenfd, (struct sockaddr*)&seraddr, sizeof(seraddr)) == -1){
+        printf("bind socket error: %s(errno: %d)\n",strerror(errno),errno);
+        return 0;
+    }
+
+    if(listen(listenfd, 10) == -1){
+        printf("listen socket error: %s(errno: %d)\n",strerror(errno),errno);
+        return 0;
+    }
+    return listenfd;
 }
 
 
