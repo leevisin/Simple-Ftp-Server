@@ -59,6 +59,31 @@ int data_fd; //数据传输fd
 int nobody_fd;//nobody进程所使用的fd
 int proto_fd;//proto进程所使用的fd
 int data_port;
+// typedef struct 
+// {
+//     char command[COMMAND_MAX];//client发来的FTP指令
+//     char com[COMMAND_MAX];//FTP指令
+//     char args[COMMAND_MAX];//FTP指令的参数
+
+//     uint32_t ip; //客户端ip地址
+//     struct sockaddr_in ip_addr; //客户端ip地址
+//     char username[100]; //用户名
+
+//     int isLogin;//登陆状态来限制功能
+
+//     int peer_fd;//客户连接的fd
+
+//     int nobody_fd;//nobody进程所使用的fd
+//     int proto_fd;//proto进程所使用的fdstruct sockaddr_in *p_addr; //port模式下对方的ip和port
+//     int data_fd; //数据传输fd
+//     int listen_fd; //监听fd，用于PASV模式
+
+//     long long restart_pos; //文件传输断点
+//     char *rnfr_name; //文件重命名 RNTR RNTO
+
+//     int limits_max_upload; //限定的最大上传速度
+//     int limits_max_download; //限定的最大下载速度
+// }Session_t;
 
 int tcp_server(void);
 void str_trim_crlf(char *str);
@@ -121,9 +146,35 @@ int main(int argc, char** argv){
             exit(-1);
     }
     printf("Accept client %s on TCP port %d\n", inet_ntoa(client_addr.sin_addr),ntohs(client_addr.sin_port));
-    			
+    
+    // int flag_pass = 1;
+			
     memset(buffer,0,sizeof(buffer));
     send(client_sockfd, Entername, sizeof(Entername), 0);
+    // 下面的可以删了，处理都在while循环里了
+    // recv(client_sockfd, buffer, sizeof(buffer),0);
+    // printf("Receive username: %s",buffer);
+    
+    // memset(buffer,0,sizeof(buffer));
+    // send(client_sockfd, Enterpass, sizeof(Enterpass), 0);
+    // recv(client_sockfd,buffer,sizeof(buffer),0);
+	
+    // printf("Receive password: %s", buffer);
+    // if(strncmp(buffer,"PASS 123456",11)!=0){
+    //     memset(buffer,0,sizeof(buffer));
+    //     send(client_sockfd, Wrongpass, sizeof(Wrongpass), 0);
+    // }
+
+    // // 切换到home/student目录下
+    // if(chdir("/home/student") == -1)
+    //     exit(-1);
+
+    // memset(buffer,0,sizeof(buffer));
+    // send(client_sockfd, succ, sizeof(succ), 0);
+    // int sys = recv(client_sockfd, buffer, sizeof(buffer),0);
+    // if(strncmp(buffer,"SYST",4)==0 || sys<=0){
+    //     send(client_sockfd, sysback , sizeof(sysback), 0);
+    // }
 
     while(1){
         char com[COMMAND_MAX];//FTP指令
@@ -171,10 +222,11 @@ int main(int argc, char** argv){
                 return 0;
             }
 
+            printf("p_addr->sin_port is %d",p_addr->sin_port);
             memset(&servaddr, 0, sizeof(servaddr));
             servaddr.sin_family = AF_INET;
             servaddr.sin_port = p_addr->sin_port;  
-            servaddr.sin_addr.s_addr = p_addr->sin_addr.s_addr;
+            servaddr.sin_addr.s_addr = inet_addr(SERVER_IP);  
             
             int con = connect(sock_cli, (struct sockaddr *)&servaddr, sizeof(servaddr));
             
@@ -392,7 +444,8 @@ void handle_PORT(int client_sockfd, char *args){
     p[1] = v[1];
     p[2] = v[2];
     p[3] = v[3];
-
+    
+    // printf("In port, port is %d", p_addr->sin_port);
     char buf[] = "200 PORT command successful. Consider using PASV.\r\n";
     send(client_sockfd, buf, sizeof(buf), 0);
 }
@@ -524,6 +577,7 @@ void show_file_info(char* filename,struct stat * info_p,int sockfd)
 	sprintf(buf7,"%s%s\n",buf6,filename);
 	sprintf(buf,"%s%s%s%s%s%s%s",buf1,buf2,buf3,buf4,buf5,buf6,buf7);
 	send(sockfd, buf7, strlen(buf7), 0);
+
 }
  
 void mode_to_letters(int mode,char str[])
@@ -532,6 +586,7 @@ void mode_to_letters(int mode,char str[])
 	if(S_ISDIR(mode)) str[0] = 'd';  //"directory ?"
 	if(S_ISCHR(mode)) str[0] = 'c';  //"char decices"?
 	if(S_ISBLK(mode)) str[0] = 'b';  //block device?
+	
 	
 	//3 bits for user
 	if(mode&S_IRUSR) str[1] = 'r';
@@ -553,7 +608,7 @@ char* uid_to_name(uid_t uid)
 {
 	struct passwd* pw_ptr;
 	static char numstr[10];
-	if((pw_ptr = getpwuid(uid)) == NULL)
+	if((pw_ptr =getpwuid(uid)) == NULL)
 	{
 		sprintf(numstr,"%d",uid);
 		printf("world");

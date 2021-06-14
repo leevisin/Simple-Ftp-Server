@@ -58,7 +58,33 @@ struct sockaddr_in *p_addr; //port模式下对方的ip和port
 int data_fd; //数据传输fd
 int nobody_fd;//nobody进程所使用的fd
 int proto_fd;//proto进程所使用的fd
-int data_port;
+// typedef struct 
+// {
+//     char command[COMMAND_MAX];//client发来的FTP指令
+//     char com[COMMAND_MAX];//FTP指令
+//     char args[COMMAND_MAX];//FTP指令的参数
+
+//     uint32_t ip; //客户端ip地址
+//     struct sockaddr_in ip_addr; //客户端ip地址
+//     char username[100]; //用户名
+
+//     int isLogin;//登陆状态来限制功能
+
+//     int peer_fd;//客户连接的fd
+
+//     int nobody_fd;//nobody进程所使用的fd
+//     int proto_fd;//proto进程所使用的fd
+
+//     struct sockaddr_in *p_addr; //port模式下对方的ip和port
+//     int data_fd; //数据传输fd
+//     int listen_fd; //监听fd，用于PASV模式
+
+//     long long restart_pos; //文件传输断点
+//     char *rnfr_name; //文件重命名 RNTR RNTO
+
+//     int limits_max_upload; //限定的最大上传速度
+//     int limits_max_download; //限定的最大下载速度
+// }Session_t;
 
 int tcp_server(void);
 void str_trim_crlf(char *str);
@@ -71,7 +97,7 @@ void handle_PWD(int);
 void handle_DELE(int, char *str);
 void handle_PORT(int, char *str);
 void handle_CWD(int, char *str);
-void handle_LIST(int, char dirname[]);
+void handle_LIST(int);
 void handle_MKD(int, char *str);
 void handle_RMD(int, char *str);
 void handle_RNFR(int, char *str);
@@ -95,8 +121,6 @@ void show_file_info(char* ,struct stat*,int);
 void mode_to_letters(int ,char[]);
 char* uid_to_name(uid_t);
 char* gid_to_name(gid_t);
-int split(char dst[][80], char* str, const char* spl);
-int test(char *pcBuf, char *pcRes);
 
 int main(int argc, char** argv){
 
@@ -121,9 +145,35 @@ int main(int argc, char** argv){
             exit(-1);
     }
     printf("Accept client %s on TCP port %d\n", inet_ntoa(client_addr.sin_addr),ntohs(client_addr.sin_port));
-    			
+    
+    // int flag_pass = 1;
+			
     memset(buffer,0,sizeof(buffer));
     send(client_sockfd, Entername, sizeof(Entername), 0);
+    // 下面的可以删了，处理都在while循环里了
+    // recv(client_sockfd, buffer, sizeof(buffer),0);
+    // printf("Receive username: %s",buffer);
+    
+    // memset(buffer,0,sizeof(buffer));
+    // send(client_sockfd, Enterpass, sizeof(Enterpass), 0);
+    // recv(client_sockfd,buffer,sizeof(buffer),0);
+	
+    // printf("Receive password: %s", buffer);
+    // if(strncmp(buffer,"PASS 123456",11)!=0){
+    //     memset(buffer,0,sizeof(buffer));
+    //     send(client_sockfd, Wrongpass, sizeof(Wrongpass), 0);
+    // }
+
+    // // 切换到home/student目录下
+    // if(chdir("/home/student") == -1)
+    //     exit(-1);
+
+    // memset(buffer,0,sizeof(buffer));
+    // send(client_sockfd, succ, sizeof(succ), 0);
+    // int sys = recv(client_sockfd, buffer, sizeof(buffer),0);
+    // if(strncmp(buffer,"SYST",4)==0 || sys<=0){
+    //     send(client_sockfd, sysback , sizeof(sysback), 0);
+    // }
 
     while(1){
         char com[COMMAND_MAX];//FTP指令
@@ -155,39 +205,7 @@ int main(int argc, char** argv){
 		} else if (strcmp("DELE", com) == 0) {
 			handle_DELE(client_sockfd, args);
 		} else if (strcmp("LIST", com) == 0) {
-            struct sockaddr_in servaddr, mine;
-
-            int sock_cli = socket(AF_INET,SOCK_STREAM, 0);
-            mine.sin_family = AF_INET;
-            mine.sin_port = htons(20);  
-            mine.sin_addr.s_addr = inet_addr(SERVER_IP);
-
-            // 设置端口复用的套接字
-            int opt = 1;
-            setsockopt(sock_cli, SOL_SOCKET, SO_REUSEADDR, (const void *)&opt, sizeof(opt));
-
-            if(bind(sock_cli, (struct sockaddr*)&mine, sizeof(mine))<0){
-                printf("bind socket error: %s(errno: %d)\n",strerror(errno),errno);
-                return 0;
-            }
-
-            memset(&servaddr, 0, sizeof(servaddr));
-            servaddr.sin_family = AF_INET;
-            servaddr.sin_port = p_addr->sin_port;  
-            servaddr.sin_addr.s_addr = p_addr->sin_addr.s_addr;
-            
-            int con = connect(sock_cli, (struct sockaddr *)&servaddr, sizeof(servaddr));
-            
-            if (con < 0)
-            {
-                printf("Connect refusion");
-                exit(1);
-            }
-
-			send(client_sockfd, LSITCODE, sizeof(LSITCODE), 0);
-			handle_LIST(sock_cli, ".");
-            close(sock_cli);
-			send(client_sockfd, listfinish, sizeof(listfinish), 0);
+			handle_LIST(client_sockfd);
 		} else if (strcmp("MKD", com) == 0) {
 			handle_MKD(client_sockfd, args);
 		} else if (strcmp("RNFR", com) == 0) {
@@ -273,40 +291,6 @@ void str_upper(char *str)
     }
 }
 
-int split(char dst[][80], char* str, const char* spl)
-{
-    int n = 0;
-    char *result = NULL;
-    result = strtok(str, spl);
-    while( result != NULL )
-    {
-        strcpy(dst[n++], result);
-        result = strtok(NULL, spl);
-    }
-    return n;
-}
-
-int test(char *pcBuf, char *pcRes)
-{
-	char *pcBegin = NULL;
-	char *pcEnd = NULL;
- 
-	pcBegin = strstr(pcBuf, ",");
-	pcEnd = strstr(pcBuf, "\r");
- 
-	if(pcBegin == NULL || pcEnd == NULL || pcBegin > pcEnd)
-	{
-		printf("Mail name not found!\n");
-	}
-	else
-	{
-		pcBegin += strlen(":");
-		memcpy(pcRes, pcBegin, pcEnd-pcBegin);
-	}
- 
-	return SUCCESS;
-}
-
 void handle_USER(int client_sockfd, char *args){
     struct passwd *pw;
     char buf[] = "331 Please specify the password.\r\n";
@@ -379,6 +363,7 @@ void handle_PORT(int client_sockfd, char *args){
     unsigned int v[6] = {0};
     sscanf(args, "%u,%u,%u,%u,%u,%u", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]);
 
+    struct sockaddr_in *p_addr;
     p_addr = (struct sockaddr_in *)malloc(sizeof (struct sockaddr_in));
     memset(p_addr, 0, sizeof(struct sockaddr_in));
     p_addr->sin_family = AF_INET;
@@ -397,14 +382,14 @@ void handle_PORT(int client_sockfd, char *args){
     send(client_sockfd, buf, sizeof(buf), 0);
 }
 
-void handle_LIST(int sockfd, char dirname[]){
+void handle_LIST(int client_sockfd){
     /*list files in directory called dirname*/
 	DIR* dir_ptr;
 	struct dirent * direntp; /*each entry*/
-	if((dir_ptr = opendir(dirname)) == NULL)
+	if((dir_ptr = opendir(".")) == NULL)
 		perror("opendir fails");
 	while((direntp = readdir(dir_ptr)) !=NULL)
-		do_stat(direntp->d_name, sockfd);
+		do_stat(direntp->d_name, client_sockfd);
 	closedir(dir_ptr);
 }
 
@@ -524,6 +509,7 @@ void show_file_info(char* filename,struct stat * info_p,int sockfd)
 	sprintf(buf7,"%s%s\n",buf6,filename);
 	sprintf(buf,"%s%s%s%s%s%s%s",buf1,buf2,buf3,buf4,buf5,buf6,buf7);
 	send(sockfd, buf7, strlen(buf7), 0);
+
 }
  
 void mode_to_letters(int mode,char str[])
@@ -532,6 +518,7 @@ void mode_to_letters(int mode,char str[])
 	if(S_ISDIR(mode)) str[0] = 'd';  //"directory ?"
 	if(S_ISCHR(mode)) str[0] = 'c';  //"char decices"?
 	if(S_ISBLK(mode)) str[0] = 'b';  //block device?
+	
 	
 	//3 bits for user
 	if(mode&S_IRUSR) str[1] = 'r';
@@ -553,7 +540,7 @@ char* uid_to_name(uid_t uid)
 {
 	struct passwd* pw_ptr;
 	static char numstr[10];
-	if((pw_ptr = getpwuid(uid)) == NULL)
+	if((pw_ptr =getpwuid(uid)) == NULL)
 	{
 		sprintf(numstr,"%d",uid);
 		printf("world");
@@ -567,8 +554,9 @@ char* gid_to_name(gid_t gid)
 	/*returns pointer to group number gid, used getgrgid*/
 	struct group* grp_ptr;
 	static char numstr[10];
-	if((grp_ptr = getgrgid(gid)) == NULL)
+	if((grp_ptr =getgrgid(gid)) == NULL)
 	{
+		printf("hello wofjl");
 		sprintf(numstr,"%d",gid);
 		return numstr;
 	}
