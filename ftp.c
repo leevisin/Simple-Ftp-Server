@@ -49,6 +49,7 @@ void handle_USER(int, char *str);
 void handle_PASS(int, char *str);
 void handle_SYST(int);
 void handle_PWD(int);
+void handle_DELE(int, char *str);
 void handle_PORT(int, char *str);
 void handle_CWD(int, char *str);
 void handle_LIST(int);
@@ -140,11 +141,13 @@ int main(int argc, char** argv){
 		} else if (strcmp("SYST", com) == 0) {
 			// handle_SYST(client_sockfd);
 		} else if (strcmp("PWD", com) == 0) {
-			// handle_PWD(client_sockfd);
+			handle_PWD(client_sockfd);
 		} else if (strcmp("PORT", com) == 0) {
 			// handle_PORT(client_sockfd, args);
 		} else if (strcmp("CWD", com) == 0) {
 			// handle_CWD(client_sockfd, args);
+		} else if (strcmp("DELE", com) == 0) {
+			// handle_DELE(client_sockfd, args);
 		} else if (strcmp("LIST", com) == 0) {
 			// handle_LIST(client_sockfd);
 		} else if (strcmp("MKD", com) == 0) {
@@ -236,3 +239,20 @@ void str_upper(char *str)
         ++str;
     }
 }
+
+
+void handle_PWD(int client_sockfd){
+    char tmp[1024] = {0};
+    char buf[100];
+    if(getcwd(tmp, sizeof tmp) == NULL)
+    {
+        //return值为-1/0，函数进入系统内核，
+        sprintf(buf, "504 get cwd error\n");
+        send(client_sockfd, buf, sizeof(buf), 0);
+        return;
+    }
+    char text[1024] = {0};
+    snprintf(text, sizeof text, "257 \"%s\"\r\n", tmp);
+    send(client_sockfd, text, sizeof(text), 0);
+}
+
