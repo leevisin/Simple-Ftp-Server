@@ -19,16 +19,6 @@
 #include <netinet/tcp.h>
 #include <stdbool.h>
 
-// FTP服务进程向nobody进程请求的命令
-#define PRIV_SOCK_GET_DATA_SOCK 1
-#define PRIV_SOCK_PASV_ACTIVE 2
-#define PRIV_SOCK_PASV_LISTEN 3
-#define PRIV_SOCK_PASV_ACCEPT 4
-
-// nobody进程对FTP服务进程的应答
-#define PRIV_SOCK_RESULT_OK 1
-#define PRIV_SOCK_RESULT_BAD 2
-
 #define PORT1  21
 #define PORT2  20
 #define MAXLINE 4096
@@ -53,40 +43,8 @@ char* SERVER_IP = "127.0.0.1";
 char buffer[BUFFER_MAX];
 char *username; //用户名
 char *rnfr_name;
-int is_port = 1;
-struct sockaddr_in *p_addr; //port模式下对方的ip和port
-int data_fd; //数据传输fd
-int nobody_fd;//nobody进程所使用的fd
-int proto_fd;//proto进程所使用的fd
-// typedef struct 
-// {
-//     char command[COMMAND_MAX];//client发来的FTP指令
-//     char com[COMMAND_MAX];//FTP指令
-//     char args[COMMAND_MAX];//FTP指令的参数
 
-//     uint32_t ip; //客户端ip地址
-//     struct sockaddr_in ip_addr; //客户端ip地址
-//     char username[100]; //用户名
-
-//     int isLogin;//登陆状态来限制功能
-
-//     int peer_fd;//客户连接的fd
-
-//     int nobody_fd;//nobody进程所使用的fd
-//     int proto_fd;//proto进程所使用的fd
-
-//     struct sockaddr_in *p_addr; //port模式下对方的ip和port
-//     int data_fd; //数据传输fd
-//     int listen_fd; //监听fd，用于PASV模式
-
-//     long long restart_pos; //文件传输断点
-//     char *rnfr_name; //文件重命名 RNTR RNTO
-
-//     int limits_max_upload; //限定的最大上传速度
-//     int limits_max_download; //限定的最大下载速度
-// }Session_t;
-
-int tcp_server(void);
+int tcp_server();
 void str_trim_crlf(char *str);
 void str_split(const char *str , char *left, char *right, char c);
 void str_upper(char *str);
@@ -107,20 +65,8 @@ void handle_RETR(int, char *str);
 void handle_STOR(int, char *str);
 void handle_TYPE(int);
 void handle_PASV(int);
-int get_trans_data_fd(int);
-int recv_fd(int sockfd);
-void trans_list_common(int list);
-char *statbuf_get_perms(struct stat *sbuf);
-char *statbuf_get_user_info(struct stat *sbuf);
-char *statbuf_get_size(struct stat *sbuf);
-char *statbuf_get_date(struct stat *sbuf);
-char *statbuf_get_filename(struct stat *sbuf, const char *name);
 
-void do_stat(char*,int);
-void show_file_info(char* ,struct stat*,int);
-void mode_to_letters(int ,char[]);
-char* uid_to_name(uid_t);
-char* gid_to_name(gid_t);
+
 
 int main(int argc, char** argv){
 
@@ -150,7 +96,6 @@ int main(int argc, char** argv){
 			
     memset(buffer,0,sizeof(buffer));
     send(client_sockfd, Entername, sizeof(Entername), 0);
-    // 下面的可以删了，处理都在while循环里了
     // recv(client_sockfd, buffer, sizeof(buffer),0);
     // printf("Receive username: %s",buffer);
     
@@ -205,7 +150,7 @@ int main(int argc, char** argv){
 		} else if (strcmp("DELE", com) == 0) {
 			handle_DELE(client_sockfd, args);
 		} else if (strcmp("LIST", com) == 0) {
-			handle_LIST(client_sockfd);
+			// handle_LIST(client_sockfd);
 		} else if (strcmp("MKD", com) == 0) {
 			handle_MKD(client_sockfd, args);
 		} else if (strcmp("RNFR", com) == 0) {
@@ -383,14 +328,7 @@ void handle_PORT(int client_sockfd, char *args){
 }
 
 void handle_LIST(int client_sockfd){
-    /*list files in directory called dirname*/
-	DIR* dir_ptr;
-	struct dirent * direntp; /*each entry*/
-	if((dir_ptr = opendir(".")) == NULL)
-		perror("opendir fails");
-	while((direntp = readdir(dir_ptr)) !=NULL)
-		do_stat(direntp->d_name, client_sockfd);
-	closedir(dir_ptr);
+    
 }
 
 void handle_MKD(int client_sockfd, char *args){
@@ -470,96 +408,4 @@ void handle_RNTO(int client_sockfd, char *args){
 void handle_QUIT(int client_sockfd){
     char buf[] = "221 Goodbye\r\n";
     send(client_sockfd, buf, sizeof(buf), 0);
-}
-
-void handle_RETR(int client_sockfd, char *args){
-
-}
-
-void do_stat(char* filename, int sockfd)
-{
-	struct stat info;
-	if((stat(filename,&info)) == -1)
-		perror(filename);
-	else
-		show_file_info(filename,&info,sockfd);
-}
- 
-void show_file_info(char* filename,struct stat * info_p,int sockfd)
-{
-	/*display the info about filename . the info is stored in struct at * info_p*/
-	
-	char modestr[11];
-	mode_to_letters(info_p->st_mode,modestr);
-	char buf1[1024];
-	char buf2[1024];
-	char buf3[1024];
-	char buf4[1024];
-	char buf5[1024];
-	char buf6[1024];
-	char buf7[1024];
-	char buf[128];
-	memset(buf7,0,sizeof(buf7));
-	sprintf(buf1,"%s",modestr);
-	sprintf(buf2,"%s%4d ",buf1,(int)info_p->st_nlink);
-	sprintf(buf3,"%s%-8s ",buf2,uid_to_name(info_p->st_uid));
-	sprintf(buf4,"%s%-8s ",buf3,gid_to_name(info_p->st_gid));
-	sprintf(buf5,"%s%8ld ",buf4,(long)info_p->st_size);
-	sprintf(buf6,"%s%.12s ",buf5,ctime(&info_p->st_mtime)+4);
-	sprintf(buf7,"%s%s\n",buf6,filename);
-	sprintf(buf,"%s%s%s%s%s%s%s",buf1,buf2,buf3,buf4,buf5,buf6,buf7);
-	send(sockfd, buf7, strlen(buf7), 0);
-
-}
- 
-void mode_to_letters(int mode,char str[])
-{
-	strcpy(str,"----------");
-	if(S_ISDIR(mode)) str[0] = 'd';  //"directory ?"
-	if(S_ISCHR(mode)) str[0] = 'c';  //"char decices"?
-	if(S_ISBLK(mode)) str[0] = 'b';  //block device?
-	
-	
-	//3 bits for user
-	if(mode&S_IRUSR) str[1] = 'r';
-	if(mode&S_IWUSR) str[2] = 'w';
-	if(mode&S_IXUSR) str[3] = 'x';
-	
-	//3 bits for group
-	if(mode&S_IRGRP) str[4] = 'r';
-	if(mode&S_IWGRP) str[5] = 'w';
-	if(mode&S_IXGRP) str[6] = 'x';
-	
-	//3 bits for other
-	if(mode&S_IROTH) str[7] = 'r';
-	if(mode&S_IWOTH) str[8] = 'w';
-	if(mode&S_IXOTH) str[9] = 'x';
-}
- 
-char* uid_to_name(uid_t uid)
-{
-	struct passwd* pw_ptr;
-	static char numstr[10];
-	if((pw_ptr =getpwuid(uid)) == NULL)
-	{
-		sprintf(numstr,"%d",uid);
-		printf("world");
-		return numstr;
-	}
-	return pw_ptr->pw_name;
-}
- 
-char* gid_to_name(gid_t gid)
-{
-	/*returns pointer to group number gid, used getgrgid*/
-	struct group* grp_ptr;
-	static char numstr[10];
-	if((grp_ptr =getgrgid(gid)) == NULL)
-	{
-		printf("hello wofjl");
-		sprintf(numstr,"%d",gid);
-		return numstr;
-	}
-	else
-		return grp_ptr->gr_name;
 }
