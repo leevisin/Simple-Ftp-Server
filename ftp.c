@@ -93,25 +93,24 @@ int main(int argc, char** argv){
     memset(buffer,0,sizeof(buffer));
     send(client_sockfd, Entername, sizeof(Entername), 0);
     recv(client_sockfd, buffer, sizeof(buffer),0);
-    printf("Receive username: %s\n",buffer);
+    printf("Receive username: %s",buffer);
     
     memset(buffer,0,sizeof(buffer));
     send(client_sockfd, Enterpass, sizeof(Enterpass), 0);
     recv(client_sockfd,buffer,sizeof(buffer),0);
 	
-    printf("Receive password: %s\n", buffer);
+    printf("Receive password: %s", buffer);
     if(strncmp(buffer,"PASS 123456",11)!=0){
         memset(buffer,0,sizeof(buffer));
         send(client_sockfd, Wrongpass, sizeof(Wrongpass), 0);
     }
 
-    // memset(buffer,0,sizeof(buffer));
-    // send(client_sockfd, succ, sizeof(succ), 0);
-    // int sys = recv(client_sockfd, buffer, sizeof(buffer),0);
-    // printf("buff: %s", buffer);
-    // if(strncmp(buffer,"SYST",4)==0 || sys<=0){
-    //     send(client_sockfd, sysback , sizeof(sysback), 0);
-    // }
+    memset(buffer,0,sizeof(buffer));
+    send(client_sockfd, succ, sizeof(succ), 0);
+    int sys = recv(client_sockfd, buffer, sizeof(buffer),0);
+    if(strncmp(buffer,"SYST",4)==0 || sys<=0){
+        send(client_sockfd, sysback , sizeof(sysback), 0);
+    }
 
     while(1){
         char com[COMMAND_MAX];//FTP指令
