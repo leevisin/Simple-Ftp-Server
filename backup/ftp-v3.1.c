@@ -58,33 +58,7 @@ struct sockaddr_in *p_addr; //port模式下对方的ip和port
 int data_fd; //数据传输fd
 int nobody_fd;//nobody进程所使用的fd
 int proto_fd;//proto进程所使用的fd
-// typedef struct 
-// {
-//     char command[COMMAND_MAX];//client发来的FTP指令
-//     char com[COMMAND_MAX];//FTP指令
-//     char args[COMMAND_MAX];//FTP指令的参数
-
-//     uint32_t ip; //客户端ip地址
-//     struct sockaddr_in ip_addr; //客户端ip地址
-//     char username[100]; //用户名
-
-//     int isLogin;//登陆状态来限制功能
-
-//     int peer_fd;//客户连接的fd
-
-//     int nobody_fd;//nobody进程所使用的fd
-//     int proto_fd;//proto进程所使用的fd
-
-//     struct sockaddr_in *p_addr; //port模式下对方的ip和port
-//     int data_fd; //数据传输fd
-//     int listen_fd; //监听fd，用于PASV模式
-
-//     long long restart_pos; //文件传输断点
-//     char *rnfr_name; //文件重命名 RNTR RNTO
-
-//     int limits_max_upload; //限定的最大上传速度
-//     int limits_max_download; //限定的最大下载速度
-// }Session_t;
+int data_port;
 
 int tcp_server(void);
 void str_trim_crlf(char *str);
@@ -97,7 +71,7 @@ void handle_PWD(int);
 void handle_DELE(int, char *str);
 void handle_PORT(int, char *str);
 void handle_CWD(int, char *str);
-void handle_LIST(int);
+void handle_LIST(int, char dirname[]);
 void handle_MKD(int, char *str);
 void handle_RMD(int, char *str);
 void handle_RNFR(int, char *str);
@@ -107,20 +81,23 @@ void handle_RETR(int, char *str);
 void handle_STOR(int, char *str);
 void handle_TYPE(int);
 void handle_PASV(int);
+int recv_fd(int sockfd);
 int get_trans_data_fd(int);
-// int recv_fd(int sockfd);
-// void trans_list_common(int list);
-// char *statbuf_get_perms(struct stat *sbuf);
-// char *statbuf_get_user_info(struct stat *sbuf);
-// char *statbuf_get_size(struct stat *sbuf);
-// char *statbuf_get_date(struct stat *sbuf);
-// char *statbuf_get_filename(struct stat *sbuf, const char *name);
+void trans_list_common(int list);
+char *statbuf_get_perms(struct stat *sbuf);
+char *statbuf_get_user_info(struct stat *sbuf);
+char *statbuf_get_size(struct stat *sbuf);
+char *statbuf_get_date(struct stat *sbuf);
+char *statbuf_get_filename(struct stat *sbuf, const char *name);
+
 
 void do_stat(char*,int);
 void show_file_info(char* ,struct stat*,int);
 void mode_to_letters(int ,char[]);
 char* uid_to_name(uid_t);
 char* gid_to_name(gid_t);
+int split(char dst[][80], char* str, const char* spl);
+int test(char *pcBuf, char *pcRes);
 
 int main(int argc, char** argv){
 
@@ -145,9 +122,7 @@ int main(int argc, char** argv){
             exit(-1);
     }
     printf("Accept client %s on TCP port %d\n", inet_ntoa(client_addr.sin_addr),ntohs(client_addr.sin_port));
-    
-    // int flag_pass = 1;
-			
+    			
     memset(buffer,0,sizeof(buffer));
     send(client_sockfd, Entername, sizeof(Entername), 0);
 
@@ -181,7 +156,10 @@ int main(int argc, char** argv){
 		} else if (strcmp("DELE", com) == 0) {
 			handle_DELE(client_sockfd, args);
 		} else if (strcmp("LIST", com) == 0) {
-			handle_LIST(client_sockfd);
+            int sock_cli = get_trans_data_fd(client_sockfd);
+			handle_LIST(sock_cli, ".");
+            close(sock_cli);
+			send(client_sockfd, listfinish, sizeof(listfinish), 0);
 		} else if (strcmp("MKD", com) == 0) {
 			handle_MKD(client_sockfd, args);
 		} else if (strcmp("RNFR", com) == 0) {
@@ -267,6 +245,40 @@ void str_upper(char *str)
     }
 }
 
+int split(char dst[][80], char* str, const char* spl)
+{
+    int n = 0;
+    char *result = NULL;
+    result = strtok(str, spl);
+    while( result != NULL )
+    {
+        strcpy(dst[n++], result);
+        result = strtok(NULL, spl);
+    }
+    return n;
+}
+
+int test(char *pcBuf, char *pcRes)
+{
+	char *pcBegin = NULL;
+	char *pcEnd = NULL;
+ 
+	pcBegin = strstr(pcBuf, ",");
+	pcEnd = strstr(pcBuf, "\r");
+ 
+	if(pcBegin == NULL || pcEnd == NULL || pcBegin > pcEnd)
+	{
+		printf("Mail name not found!\n");
+	}
+	else
+	{
+		pcBegin += strlen(":");
+		memcpy(pcRes, pcBegin, pcEnd-pcBegin);
+	}
+ 
+	return SUCCESS;
+}
+
 void handle_USER(int client_sockfd, char *args){
     struct passwd *pw;
     char buf[] = "331 Please specify the password.\r\n";
@@ -339,7 +351,6 @@ void handle_PORT(int client_sockfd, char *args){
     unsigned int v[6] = {0};
     sscanf(args, "%u,%u,%u,%u,%u,%u", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]);
 
-    struct sockaddr_in *p_addr;
     p_addr = (struct sockaddr_in *)malloc(sizeof (struct sockaddr_in));
     memset(p_addr, 0, sizeof(struct sockaddr_in));
     p_addr->sin_family = AF_INET;
@@ -358,36 +369,14 @@ void handle_PORT(int client_sockfd, char *args){
     send(client_sockfd, buf, sizeof(buf), 0);
 }
 
-void handle_LIST(int client_sockfd){
-    // int list = 1;
-    // //发起数据连接
-    // if(get_trans_data_fd(client_sockfd) == 0)
-    //     return ;
-
-    // //给出150 Here comes the directory listing.
-    // char buf1[] = "150 Here comes the directory listing.\r\n";
-    // send(client_sockfd, buf1, sizeof(buf1), 0);
-
-    // //传输目录列表
-    // if(list == 1)
-    //     trans_list_common(1);
-    // else
-    //     trans_list_common(0);
-    // close(data_fd); //传输结束记得关闭
-    // data_fd = -1;
-
-    // //给出226 Directory send OK.
-    // char buf2[] = "226 Directory send OK.\r\n";
-    // send(client_sockfd, buf2, sizeof(buf2), 0);
-
-
+void handle_LIST(int sockfd, char dirname[]){
     /*list files in directory called dirname*/
 	DIR* dir_ptr;
 	struct dirent * direntp; /*each entry*/
-	if((dir_ptr = opendir(".")) == NULL)
+	if((dir_ptr = opendir(dirname)) == NULL)
 		perror("opendir fails");
 	while((direntp = readdir(dir_ptr)) !=NULL)
-		do_stat(direntp->d_name, client_sockfd);
+		do_stat(direntp->d_name, sockfd);
 	closedir(dir_ptr);
 }
 
@@ -474,272 +463,6 @@ void handle_RETR(int client_sockfd, char *args){
 
 }
 
-// // 建立数据连接
-// int get_trans_data_fd(int client_sockfd)
-// {
-//     //主动模式
-//     if(is_port)
-//     {
-//         //发送cmd
-//         char cmd = PRIV_SOCK_GET_DATA_SOCK;
-//         if(write(proto_fd, &cmd, sizeof(cmd))!=sizeof(1)){
-//             exit(-1);
-//         }
-//         //发送ip port
-//         char *ip = inet_ntoa(p_addr->sin_addr);
-//         uint16_t port = ntohs(p_addr->sin_port);
-//         size_t len = strlen(ip);
-//         if(write(proto_fd, &len, sizeof((int)ip))!=strlen(ip)){
-//             exit(-1);
-//         }
-//         if(write(proto_fd, ip, strlen(ip))!=strlen(ip)){
-//             exit(-1);
-//         }
-//         if(write(proto_fd, &port, sizeof(int))!=sizeof(port)){
-//             exit(-1);
-//         }
-//         //接收应答
-//         char result;
-//         if(read(proto_fd, &result, sizeof result) != sizeof(result))
-//         {
-//             exit(-1);
-//         }
-
-//         if(result == PRIV_SOCK_RESULT_BAD)
-//         {
-//             char buf[] = "500 get pasv data_fd error.\r\n";
-//             send(client_sockfd, buf, sizeof(buf), 0);
-//             exit(-1);
-//         }
-//         //接收fd
-//         data_fd = recv_fd(proto_fd);
-
-//         //释放port模式
-//         free(p_addr);
-//         p_addr = NULL;
-//     }
-
-//     // if(!is_port)
-//     // {
-//     //     //先给nobody发命令
-//     //     priv_sock_send_cmd(sess->proto_fd, PRIV_SOCK_PASV_ACCEPT);
-
-//     //     //接收结果
-//     //     char res = priv_sock_recv_result(sess->proto_fd);
-//     //     if(res == PRIV_SOCK_RESULT_BAD)
-//     //     {
-//     //         ftp_reply(sess, FTP_BADCMD, "get pasv data_fd error");
-//     //         fprintf(stderr, "get data fd error\n");
-//     //         exit(EXIT_FAILURE);
-//     //     }
-
-//     //     //接收fd
-//     //     sess->data_fd = priv_sock_recv_fd(sess->proto_fd);  
-//     // }
-
-
-//     return 1;
-// }
-
-
-// int recv_fd(int sockfd)
-// {
-//     int ret;
-//     struct msghdr msg;
-//     char recvchar;
-//     struct iovec vec;
-//     int recvfd;
-//     char cmsgbuf[CMSG_SPACE(sizeof(recvfd))];
-//     struct cmsghdr *p_cmsg;
-//     int *p_fd;
-//     vec.iov_base = &recvchar;
-//     vec.iov_len = sizeof(recvchar);
-//     msg.msg_name = NULL;
-//     msg.msg_namelen = 0;
-//     msg.msg_iov = &vec;
-//     msg.msg_iovlen = 1;
-//     msg.msg_control = cmsgbuf;
-//     msg.msg_controllen = sizeof(cmsgbuf);
-//     msg.msg_flags = 0;
-
-//     p_fd = (int*)CMSG_DATA(CMSG_FIRSTHDR(&msg));
-//     *p_fd = -1;
-//     ret = recvmsg(sockfd, &msg, 0);
-//     if(ret != 1)
-//         exit(-1);
-
-//     p_cmsg = CMSG_FIRSTHDR(&msg);
-//     if(p_cmsg == NULL)
-//         exit(-1);
-
-//     p_fd = (int *)CMSG_DATA(p_cmsg);
-//     recvfd = *p_fd;
-//     if(recvfd == -1)
-//         exit(-1);
-
-//     return recvfd;    
-// }
-
-// void trans_list_common(int list)
-// {
-//     DIR *dir = opendir(".");
-//     if(dir == NULL)
-//         exit(-1);
-
-//     struct dirent *dr;
-//     while((dr = readdir(dir)))
-//     {
-//         const char *filename = dr->d_name;
-//         if(filename[0] == '.')
-//             continue;
-
-//         char buf[1024] = {0};
-//         struct stat sbuf;
-//         if(lstat(filename, &sbuf) == -1)
-//             exit(-1);
-
-//         if(list == 1) // LIST
-//         {
-//             strcpy(buf, statbuf_get_perms(&sbuf));
-//             strcat(buf, " ");
-//             strcat(buf, statbuf_get_user_info(&sbuf));
-//             strcat(buf, " ");
-//             strcat(buf, statbuf_get_size(&sbuf));
-//             strcat(buf, " ");
-//             strcat(buf, statbuf_get_date(&sbuf));
-//             strcat(buf, " ");
-//             strcat(buf, statbuf_get_filename(&sbuf, filename));
-//         }
-//         else //NLST
-//         {
-//             strcpy(buf, statbuf_get_filename(&sbuf, filename));
-//         }
-
-//         strcat(buf, "\r\n");
-//         write(data_fd, buf, strlen(buf));
-//     }
-
-//     closedir(dir);
-// }
-
-// char *statbuf_get_perms(struct stat *sbuf)
-// {
-//     //这里使用static返回perms
-//     static char perms[] = "----------";
-//     mode_t mode = sbuf->st_mode;
-
-//     //文件类型
-//     switch(mode & S_IFMT)
-//     {
-//         case S_IFSOCK:
-//             perms[0] = 's';
-//             break;
-//         case S_IFLNK:
-//             perms[0] = 'l';
-//             break;
-//         case S_IFREG:
-//             perms[0] = '-';
-//             break;
-//         case S_IFBLK:
-//             perms[0] = 'b';
-//             break;
-//         case S_IFDIR:
-//             perms[0] = 'd';
-//             break;
-//         case S_IFCHR:
-//             perms[0] = 'c';
-//             break;
-//         case S_IFIFO:
-//             perms[0] = 'p';
-//             break;
-//     }
-//     //权限
-//     if(mode & S_IRUSR)
-//         perms[1] = 'r';
-//     if(mode & S_IWUSR)
-//         perms[2] = 'w';
-//     if(mode & S_IXUSR)
-//         perms[3] = 'x';
-//     if(mode & S_IRGRP)
-//         perms[4] = 'r';
-//     if(mode & S_IWGRP)
-//         perms[5] = 'w';
-//     if(mode & S_IXGRP)
-//         perms[6] = 'x';
-//     if(mode & S_IROTH)
-//         perms[7] = 'r';
-//     if(mode & S_IWOTH)
-//         perms[8] = 'w';
-//     if(mode & S_IXOTH)
-//         perms[9] = 'x';
-
-//     if(mode & S_ISUID)
-//         perms[3] = (perms[3] == 'x') ? 's' : 'S';
-//     if(mode & S_ISGID)
-//         perms[6] = (perms[6] == 'x') ? 's' : 'S';
-//     if(mode & S_ISVTX)
-//         perms[9] = (perms[9] == 'x') ? 't' : 'T';
-
-//     return perms;
-// }
-
-// char *statbuf_get_user_info(struct stat *sbuf)
-// {
-//     static char info[1024] = {0};
-//     snprintf(info, sizeof info, " %3d %8d %8d", sbuf->st_nlink, sbuf->st_uid, sbuf->st_gid);
-
-//     return info;
-// }
-
-// char *statbuf_get_size(struct stat *sbuf)
-// {
-//     static char buf[100] = {0};
-//     snprintf(buf, sizeof buf, "%8lu", (unsigned long)sbuf->st_size);
-//     return buf;
-// }
-
-// //获取文件最近更改日期
-// char *statbuf_get_date(struct stat *sbuf)
-// {
-//     static char datebuf[1024] = {0};
-//     struct tm *ptm;
-//     time_t ct = sbuf->st_ctime;
-//     if((ptm = localtime(&ct)) == NULL)
-//         exit(-1);
-
-//     const char *format = "%b %e %H:%M"; //时间格式
-
-//     if(strftime(datebuf, sizeof datebuf, format, ptm) == 0)
-//     {
-//         fprintf(stderr, "strftime error\n");
-//         exit(EXIT_FAILURE);
-//     }
-
-//     return datebuf;
-// }
-
-// //获取文件名字
-// char *statbuf_get_filename(struct stat *sbuf, const char *name)
-// {
-//     static char filename[1024] = {0};
-//     //name 处理链接名字
-//     if(S_ISLNK(sbuf->st_mode))
-//     {
-//         char linkfile[1024] = {0};
-//         if(readlink(name, linkfile, sizeof linkfile) == -1)
-//             exit(-1);
-//         snprintf(filename, sizeof filename, "%s -> %s", name, linkfile);
-//     }else
-//     {
-//         strcpy(filename, name);
-//     }
-
-//     return filename;
-// }
-
-
-
-
 void do_stat(char* filename, int sockfd)
 {
 	struct stat info;
@@ -764,14 +487,6 @@ void show_file_info(char* filename,struct stat * info_p,int sockfd)
 	char buf7[1024];
 	char buf[128];
 	memset(buf7,0,sizeof(buf7));
-	/*sprintf(buf1,"%s",modestr);
-	sprintf(buf2,"%4d ",(int)info_p->st_nlink);
-	sprintf(buf3,"%-8s ",uid_to_name(info_p->st_uid));
-	sprintf(buf4,"%-8s ",gid_to_name(info_p->st_gid));
-	sprintf(buf5,"%8ld ",(long)info_p->st_size);
-	sprintf(buf6,"%.12s ",ctime(&info_p->st_mtime)+4);
-	sprintf(buf7,"%s\n",filename);
-	*/
 	sprintf(buf1,"%s",modestr);
 	sprintf(buf2,"%s%4d ",buf1,(int)info_p->st_nlink);
 	sprintf(buf3,"%s%-8s ",buf2,uid_to_name(info_p->st_uid));
@@ -781,7 +496,6 @@ void show_file_info(char* filename,struct stat * info_p,int sockfd)
 	sprintf(buf7,"%s%s\n",buf6,filename);
 	sprintf(buf,"%s%s%s%s%s%s%s",buf1,buf2,buf3,buf4,buf5,buf6,buf7);
 	send(sockfd, buf7, strlen(buf7), 0);
-
 }
  
 void mode_to_letters(int mode,char str[])
@@ -790,7 +504,6 @@ void mode_to_letters(int mode,char str[])
 	if(S_ISDIR(mode)) str[0] = 'd';  //"directory ?"
 	if(S_ISCHR(mode)) str[0] = 'c';  //"char decices"?
 	if(S_ISBLK(mode)) str[0] = 'b';  //block device?
-	
 	
 	//3 bits for user
 	if(mode&S_IRUSR) str[1] = 'r';
@@ -812,7 +525,7 @@ char* uid_to_name(uid_t uid)
 {
 	struct passwd* pw_ptr;
 	static char numstr[10];
-	if((pw_ptr =getpwuid(uid)) == NULL)
+	if((pw_ptr = getpwuid(uid)) == NULL)
 	{
 		sprintf(numstr,"%d",uid);
 		printf("world");
@@ -826,12 +539,47 @@ char* gid_to_name(gid_t gid)
 	/*returns pointer to group number gid, used getgrgid*/
 	struct group* grp_ptr;
 	static char numstr[10];
-	if((grp_ptr =getgrgid(gid)) == NULL)
+	if((grp_ptr = getgrgid(gid)) == NULL)
 	{
-		printf("hello wofjl");
 		sprintf(numstr,"%d",gid);
 		return numstr;
 	}
 	else
 		return grp_ptr->gr_name;
+}
+
+
+int get_trans_data_fd(int client_sockfd){
+    struct sockaddr_in servaddr, mine;
+
+    int sock_cli = socket(AF_INET,SOCK_STREAM, 0);
+    mine.sin_family = AF_INET;
+    mine.sin_port = htons(20);  
+    mine.sin_addr.s_addr = inet_addr(SERVER_IP);
+
+    // 设置端口复用的套接字
+    int opt = 1;
+    setsockopt(sock_cli, SOL_SOCKET, SO_REUSEADDR, (const void *)&opt, sizeof(opt));
+
+    if(bind(sock_cli, (struct sockaddr*)&mine, sizeof(mine))<0){
+        printf("bind socket error: %s(errno: %d)\n",strerror(errno),errno);
+        return 0;
+    }
+
+    memset(&servaddr, 0, sizeof(servaddr));
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_port = p_addr->sin_port;  
+    servaddr.sin_addr.s_addr = p_addr->sin_addr.s_addr;
+    
+    int con = connect(sock_cli, (struct sockaddr *)&servaddr, sizeof(servaddr));
+    
+    if (con < 0)
+    {
+        printf("Connect refusion");
+        exit(1);
+    }
+
+    send(client_sockfd, LSITCODE, sizeof(LSITCODE), 0);
+    return sock_cli;
+
 }

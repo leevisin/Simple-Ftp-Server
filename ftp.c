@@ -77,18 +77,19 @@ void handle_RMD(int, char *str);
 void handle_RNFR(int, char *str);
 void handle_RNTO(int, char *str);
 void handle_QUIT(int);
-void handle_RETR(int, char *str);
+void handle_RETR(int, int, char *str);
 void handle_STOR(int, char *str);
 void handle_TYPE(int);
 void handle_PASV(int);
-int get_trans_data_fd(int);
 int recv_fd(int sockfd);
-void trans_list_common(int list);
-char *statbuf_get_perms(struct stat *sbuf);
-char *statbuf_get_user_info(struct stat *sbuf);
-char *statbuf_get_size(struct stat *sbuf);
-char *statbuf_get_date(struct stat *sbuf);
-char *statbuf_get_filename(struct stat *sbuf, const char *name);
+int get_trans_data_fd(int);
+// void trans_list_common(int list);
+// char *statbuf_get_perms(struct stat *sbuf);
+// char *statbuf_get_user_info(struct stat *sbuf);
+// char *statbuf_get_size(struct stat *sbuf);
+// char *statbuf_get_date(struct stat *sbuf);
+// char *statbuf_get_filename(struct stat *sbuf, const char *name);
+
 
 void do_stat(char*,int);
 void show_file_info(char* ,struct stat*,int);
@@ -155,38 +156,9 @@ int main(int argc, char** argv){
 		} else if (strcmp("DELE", com) == 0) {
 			handle_DELE(client_sockfd, args);
 		} else if (strcmp("LIST", com) == 0) {
-            struct sockaddr_in servaddr, mine;
-
-            int sock_cli = socket(AF_INET,SOCK_STREAM, 0);
-            mine.sin_family = AF_INET;
-            mine.sin_port = htons(20);  
-            mine.sin_addr.s_addr = inet_addr(SERVER_IP);
-
-            // 设置端口复用的套接字
-            int opt = 1;
-            setsockopt(sock_cli, SOL_SOCKET, SO_REUSEADDR, (const void *)&opt, sizeof(opt));
-
-            if(bind(sock_cli, (struct sockaddr*)&mine, sizeof(mine))<0){
-                printf("bind socket error: %s(errno: %d)\n",strerror(errno),errno);
-                return 0;
-            }
-
-            memset(&servaddr, 0, sizeof(servaddr));
-            servaddr.sin_family = AF_INET;
-            servaddr.sin_port = p_addr->sin_port;  
-            servaddr.sin_addr.s_addr = p_addr->sin_addr.s_addr;
-            
-            int con = connect(sock_cli, (struct sockaddr *)&servaddr, sizeof(servaddr));
-            
-            if (con < 0)
-            {
-                printf("Connect refusion");
-                exit(1);
-            }
-
-			send(client_sockfd, LSITCODE, sizeof(LSITCODE), 0);
-			handle_LIST(sock_cli, ".");
-            close(sock_cli);
+            int datafd = get_trans_data_fd(client_sockfd);
+			handle_LIST(datafd, ".");
+            close(datafd);
 			send(client_sockfd, listfinish, sizeof(listfinish), 0);
 		} else if (strcmp("MKD", com) == 0) {
 			handle_MKD(client_sockfd, args);
@@ -198,7 +170,8 @@ int main(int argc, char** argv){
 			handle_QUIT(client_sockfd);
 			break;
 		} else if (strcmp("RETR", com) == 0) {
-			// handle_RETR(client_sockfd, args);
+            int datafd = get_trans_data_fd(client_sockfd);
+			handle_RETR(client_sockfd, datafd, args);
 		} else if (strcmp("STOR", com) == 0) {
 			// handle_STOR(client_sockfd, args);
 		} else if (strcmp("TYPE", com) == 0) {
@@ -487,8 +460,32 @@ void handle_QUIT(int client_sockfd){
     send(client_sockfd, buf, sizeof(buf), 0);
 }
 
-void handle_RETR(int client_sockfd, char *args){
-
+void handle_RETR(int client_sockfd,int datafd, char *args){
+    char filename[] = "./";
+    strcat(filename, args);
+    FILE *fp = fopen(filename, "rb");
+    if ( fp == NULL) {
+        printf("fp is NULL\n");
+        exit(-1);
+    }
+    send(client_sockfd, get_open_succ, sizeof(get_open_succ), 0);
+    // 问题读了两个有关
+    memset(buffer,0,sizeof(buffer));
+    size_t nreads, nwrites;
+    while(nreads = fread(buffer, sizeof(char), sizeof(buffer), fp)){
+        printf("nreads=%d\n",nreads);
+        if((nwrites = write(datafd, buffer, nreads)) != nreads){
+            printf("nwrites=%d\n",nwrites);
+            fprintf(stderr, "write error\n");
+            fclose(fp);
+            close(datafd);
+            exit(-1);
+        }
+        printf("nwrites=%d\n",nwrites);
+        fclose(fp);
+        close(datafd);
+        send(client_sockfd, getfinish, sizeof(getfinish), 0);
+    }
 }
 
 void do_stat(char* filename, int sockfd)
@@ -574,4 +571,40 @@ char* gid_to_name(gid_t gid)
 	}
 	else
 		return grp_ptr->gr_name;
+}
+
+
+int get_trans_data_fd(int client_sockfd){
+    struct sockaddr_in servaddr, mine;
+
+    int sock_cli = socket(AF_INET,SOCK_STREAM, 0);
+    mine.sin_family = AF_INET;
+    mine.sin_port = htons(20);  
+    mine.sin_addr.s_addr = inet_addr(SERVER_IP);
+
+    // 设置端口复用的套接字
+    int opt = 1;
+    setsockopt(sock_cli, SOL_SOCKET, SO_REUSEADDR, (const void *)&opt, sizeof(opt));
+
+    if(bind(sock_cli, (struct sockaddr*)&mine, sizeof(mine))<0){
+        printf("bind socket error: %s(errno: %d)\n",strerror(errno),errno);
+        return 0;
+    }
+
+    memset(&servaddr, 0, sizeof(servaddr));
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_port = p_addr->sin_port;  
+    servaddr.sin_addr.s_addr = p_addr->sin_addr.s_addr;
+    
+    int con = connect(sock_cli, (struct sockaddr *)&servaddr, sizeof(servaddr));
+    
+    if (con < 0)
+    {
+        printf("Connect refusion");
+        exit(1);
+    }
+
+    send(client_sockfd, LSITCODE, sizeof(LSITCODE), 0);
+    return sock_cli;
+
 }
