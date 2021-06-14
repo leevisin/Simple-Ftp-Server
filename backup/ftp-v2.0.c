@@ -105,13 +105,13 @@ int main(int argc, char** argv){
         send(client_sockfd, Wrongpass, sizeof(Wrongpass), 0);
     }
 
-    // memset(buffer,0,sizeof(buffer));
-    // send(client_sockfd, succ, sizeof(succ), 0);
-    // int sys = recv(client_sockfd, buffer, sizeof(buffer),0);
-    // printf("buff: %s", buffer);
-    // if(strncmp(buffer,"SYST",4)==0 || sys<=0){
-    //     send(client_sockfd, sysback , sizeof(sysback), 0);
-    // }
+    memset(buffer,0,sizeof(buffer));
+    send(client_sockfd, succ, sizeof(succ), 0);
+    int sys = recv(client_sockfd, buffer, sizeof(buffer),0);
+    printf("buff: %s", buffer);
+    if(strncmp(buffer,"SYST",4)==0 || sys<=0){
+        send(client_sockfd, sysback , sizeof(sysback), 0);
+    }
 
     while(1){
         char com[COMMAND_MAX];//FTP指令
