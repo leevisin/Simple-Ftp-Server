@@ -305,15 +305,15 @@ void handle_PASS(int client_sockfd, char *args){
     if(strncmp(buffer,"PASS 123456",11)!=0){
         sprintf(buf, "530 Login incorrect.\r\n");
         send(client_sockfd, buf, sizeof(buf), 0);
-    }
+    }else{
+		sprintf(buf, "230 Login successful! Welcome!\r\n ");
 
-    sprintf(buf, "230 Login successful! Welcome!\r\n ");
+		//home---切换到主目录
+		if(chdir("/home/student") == -1)
+			exit(-1);
 
-    //home---切换到主目录
-    if(chdir("/home/student") == -1)
-        exit(-1);
-
-    send(client_sockfd, buf, sizeof(buf), 0);
+		send(client_sockfd, buf, sizeof(buf), 0);
+	}
 }
 
 void handle_SYST(int client_sockfd){
