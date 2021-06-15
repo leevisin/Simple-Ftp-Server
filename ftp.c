@@ -51,9 +51,10 @@
 
 char* SERVER_IP = "127.0.0.1";
 char buffer[BUFFER_MAX];
-char *username; //用户名
+char username[100]; //用户名
 char *rnfr_name;
 int is_port = 1;
+struct sockaddr_in client_addr;
 struct sockaddr_in *p_addr; //port模式下对方的ip和port
 int data_fd; //数据传输fd
 int nobody_fd;//nobody进程所使用的fd
@@ -78,7 +79,7 @@ void handle_RNFR(int, char *str);
 void handle_RNTO(int, char *str);
 void handle_QUIT(int);
 void handle_RETR(int, int, char *str);
-void handle_STOR(int, char *str);
+void handle_STOR(int, int, char *str);
 void handle_TYPE(int);
 void handle_PASV(int);
 int recv_fd(int sockfd);
@@ -109,7 +110,7 @@ int main(int argc, char** argv){
     }
 
     int server_sockfd, client_sockfd;
-    struct sockaddr_in server_addr, client_addr;
+    struct sockaddr_in server_addr;
 
     //创建一个监听fd
     server_sockfd = tcp_server();
@@ -139,6 +140,7 @@ int main(int argc, char** argv){
         str_split(buffer, com, args, ' ');
         str_upper(com);
         // Need to display user IP Action speed&file when transmitting
+        printf("Username=%s, IP=%s, ", username, inet_ntoa(client_addr.sin_addr));
         printf("Action=%s, Args=%s\n", com, args);
 
 		if (strcmp("USER", com) == 0) {
@@ -173,7 +175,8 @@ int main(int argc, char** argv){
             int datafd = get_trans_data_fd(client_sockfd);
 			handle_RETR(client_sockfd, datafd, args);
 		} else if (strcmp("STOR", com) == 0) {
-			// handle_STOR(client_sockfd, args);
+            int datafd = get_trans_data_fd(client_sockfd);
+			handle_STOR(client_sockfd, datafd, args);
 		} else if (strcmp("TYPE", com) == 0) {
 			// handle_TYPE(client_sockfd);
 		} else if (strcmp("PASV", com) == 0) {
@@ -294,7 +297,7 @@ void handle_USER(int client_sockfd, char *args){
         sprintf(buf, "530 Login incorrect.\r\n");
         send(client_sockfd, buf, sizeof(buf), 0);
     }
-    username = args;
+    strcpy(username, args);
     send(client_sockfd, buf, sizeof(buf), 0);
 }
 
@@ -306,6 +309,7 @@ void handle_PASS(int client_sockfd, char *args){
         sprintf(buf, "530 Login incorrect.\r\n");
         send(client_sockfd, buf, sizeof(buf), 0);
     }else{
+
 		sprintf(buf, "230 Login successful! Welcome!\r\n ");
 
 		//home---切换到主目录
@@ -469,11 +473,13 @@ void handle_RETR(int client_sockfd,int datafd, char *args){
         exit(-1);
     }
     send(client_sockfd, get_open_succ, sizeof(get_open_succ), 0);
-    // 问题读了两个有关
+    
     memset(buffer,0,sizeof(buffer));
     size_t nreads, nwrites;
     while(nreads = fread(buffer, sizeof(char), sizeof(buffer), fp)){
+        printf("buffer=%s",buffer);
         printf("nreads=%d\n",nreads);
+
         if((nwrites = write(datafd, buffer, nreads)) != nreads){
             printf("nwrites=%d\n",nwrites);
             fprintf(stderr, "write error\n");
@@ -481,14 +487,49 @@ void handle_RETR(int client_sockfd,int datafd, char *args){
             close(datafd);
             exit(-1);
         }
-        printf("nwrites=%d\n",nwrites);
-        fclose(fp);
-        close(datafd);
-        send(client_sockfd, getfinish, sizeof(getfinish), 0);
     }
+    printf("nwrites=%d\n",nwrites);
+    fclose(fp);
+    close(datafd);
+    send(client_sockfd, getfinish, sizeof(getfinish), 0);
 }
 
-voi handle_STOR(int client_sockfd, char* args){
+void handle_STOR(int client_sockfd, int datafd, char* args){
+    // char filename_read[] = "/home/student";
+    // strcat(filename_read, args);
+    // FILE *fp_rd = fopen(filename_read, "rb");
+    // if ( fp_rd == NULL) {
+    //     printf("fp_rd is NULL\n");
+    //     exit(-1);
+    // }
+    // send(client_sockfd, get_open_succ, sizeof(get_open_succ), 0);
+
+    // char filename_write[] = "./";
+    // strcat(filename_write, args);
+    // FILE *fp_wt = fopen(filename_write, "rb");
+    // if ( fp_wt == NULL) {
+    //     printf("fp_wt is NULL\n");
+    //     exit(-1);
+    // }
+
+    // memset(buffer,0,sizeof(buffer));
+    // size_t nreads, nwrites;
+    // while(nreads = fread(buffer, sizeof(char), sizeof(buffer), fp_rd)){
+    //     printf("nreads=%d\n",nreads);
+    //     // nreads = fwrite(buffer, sizeof(char), sizeof(buffer), fp_wt);
+    //     // if((nwrites = write(datafd, buffer, nreads)) != nreads){
+    //     if((nwrites = write(datafd, buffer, nreads)) != nreads){
+    //         printf("nwrites=%d\n",nwrites);
+    //         fprintf(stderr, "write error\n");
+    //         fclose(fp_wt);
+    //         close(datafd);
+    //         exit(-1);
+    //     }
+    //     printf("nwrites=%d\n",nwrites);
+    //     fclose(fp_wt);
+    //     close(datafd);
+    //     send(client_sockfd, getfinish, sizeof(getfinish), 0);
+    // }
 }
 
 void do_stat(char* filename, int sockfd)
