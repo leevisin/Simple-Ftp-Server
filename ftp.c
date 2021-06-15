@@ -173,7 +173,8 @@ int main(int argc, char** argv){
             int datafd = get_trans_data_fd(client_sockfd);
 			handle_RETR(client_sockfd, datafd, args);
 		} else if (strcmp("STOR", com) == 0) {
-			// handle_STOR(client_sockfd, args);
+            int datafd = get_trans_data_fd(client_sockfd);
+			handle_STOR(client_sockfd, datafd, args);
 		} else if (strcmp("TYPE", com) == 0) {
 			// handle_TYPE(client_sockfd);
 		} else if (strcmp("PASV", com) == 0) {
@@ -473,7 +474,9 @@ void handle_RETR(int client_sockfd,int datafd, char *args){
     memset(buffer,0,sizeof(buffer));
     size_t nreads, nwrites;
     while(nreads = fread(buffer, sizeof(char), sizeof(buffer), fp)){
+        printf("buffer=%s",buffer);
         printf("nreads=%d\n",nreads);
+
         if((nwrites = write(datafd, buffer, nreads)) != nreads){
             printf("nwrites=%d\n",nwrites);
             fprintf(stderr, "write error\n");
@@ -481,39 +484,49 @@ void handle_RETR(int client_sockfd,int datafd, char *args){
             close(datafd);
             exit(-1);
         }
-        printf("nwrites=%d\n",nwrites);
-        fclose(fp);
-        close(datafd);
-        send(client_sockfd, getfinish, sizeof(getfinish), 0);
     }
+    printf("nwrites=%d\n",nwrites);
+    fclose(fp);
+    close(datafd);
+    send(client_sockfd, getfinish, sizeof(getfinish), 0);
 }
 
 void handle_STOR(int client_sockfd, int datafd, char* args){
-    char filename[] = "/home/student/";
-    strcat(filename, args);
-    FILE *fp = fopen(filename, "rb");
-    if ( fp == NULL) {
-        printf("fp is NULL\n");
-        exit(-1);
-    }
-    send(client_sockfd, get_open_succ, sizeof(get_open_succ), 0);
-    
-    memset(buffer,0,sizeof(buffer));
-    size_t nreads, nwrites;
-    while(nreads = fread(buffer, sizeof(char), sizeof(buffer), fp)){
-        printf("nreads=%d\n",nreads);
-        if((nwrites = write(datafd, buffer, nreads)) != nreads){
-            printf("nwrites=%d\n",nwrites);
-            fprintf(stderr, "write error\n");
-            fclose(fp);
-            close(datafd);
-            exit(-1);
-        }
-        printf("nwrites=%d\n",nwrites);
-        fclose(fp);
-        close(datafd);
-        send(client_sockfd, getfinish, sizeof(getfinish), 0);
-    }
+    // char filename_read[] = "/home/student";
+    // strcat(filename_read, args);
+    // FILE *fp_rd = fopen(filename_read, "rb");
+    // if ( fp_rd == NULL) {
+    //     printf("fp_rd is NULL\n");
+    //     exit(-1);
+    // }
+    // send(client_sockfd, get_open_succ, sizeof(get_open_succ), 0);
+
+    // char filename_write[] = "./";
+    // strcat(filename_write, args);
+    // FILE *fp_wt = fopen(filename_write, "rb");
+    // if ( fp_wt == NULL) {
+    //     printf("fp_wt is NULL\n");
+    //     exit(-1);
+    // }
+
+    // memset(buffer,0,sizeof(buffer));
+    // size_t nreads, nwrites;
+    // while(nreads = fread(buffer, sizeof(char), sizeof(buffer), fp_rd)){
+    //     printf("nreads=%d\n",nreads);
+    //     // nreads = fwrite(buffer, sizeof(char), sizeof(buffer), fp_wt);
+    //     // if((nwrites = write(datafd, buffer, nreads)) != nreads){
+    //     if((nwrites = write(datafd, buffer, nreads)) != nreads){
+    //         printf("nwrites=%d\n",nwrites);
+    //         fprintf(stderr, "write error\n");
+    //         fclose(fp_wt);
+    //         close(datafd);
+    //         exit(-1);
+    //     }
+    //     printf("nwrites=%d\n",nwrites);
+    //     fclose(fp_wt);
+    //     close(datafd);
+    //     send(client_sockfd, getfinish, sizeof(getfinish), 0);
+    // }
 }
 
 void do_stat(char* filename, int sockfd)
