@@ -534,58 +534,96 @@ void handle_RETR(int client_sockfd,int datafd, char *args){
     close(datafd);
     send(client_sockfd, getfinish, sizeof(getfinish), 0);
 
+
+
+    // int fd = open(args, O_RDONLY);
+
+    // //判断是否是普通文件
+    // struct stat sbuf;
+    // if(fstat(fd, &sbuf) == -1)
+    //     exit(-1);
+    // if(!S_ISREG(sbuf.st_mode))
+    // {
+    //     char buf[] = "550 Can only download regular file.\r\n";
+    //     send(client_sockfd, buf, sizeof(buf), 0);
+    //     return;
+    // }
+
+    // //判断断点续传
+    // unsigned long filesize = sbuf.st_size;//剩余的文件字节
+
+    // //150 ascii
+    // //150 Opening ASCII mode data connection for /home/wing/redis-stable.tar.gz (1251318 bytes).
+    // char text[1024] = {0};
+    // if(ascii_mode == 1)
+    //     snprintf(text, sizeof text, "150 Opening ASCII mode data connection for %s (%lu bytes).\r\n", args, filesize);
+    // else
+    //     snprintf(text, sizeof text, "150 Opening Binary mode data connection for %s (%lu bytes).\r\n", args, filesize);
+    // send(client_sockfd, text, sizeof(text), 0);
+
+    // //传输
+    // int flag = 0; //记录下载的结果
+    // int nleft = filesize; //剩余字节数
+    // int block_size = 0; //一次传输的字节数
+    // const int kSize = 65536;
+    // while(nleft > 0)
+    // {
+    //     block_size = (nleft > kSize) ? kSize : nleft;//读取字节数
+    //     //sendfile发生在内核，更加高效
+    //     int nwrite = sendfile(datafd, fd, NULL, block_size);
+
+    //     if(nwrite == -1)
+    //     {
+    //         flag = 1; //错误
+    //         break;
+    //     }
+    //     nleft -= nwrite;
+    // }
+    // if(nleft == 0)
+    //     flag = 0; //正确退出
+
+    // //清理 关闭fd
+    // close(fd);
+    // close(datafd);
+    // send(client_sockfd, getfinish, sizeof(getfinish), 0);
 }
 
 void handle_STOR(int client_sockfd, int datafd, char* args){
-    // 有问题 问问
-    FILE *outfile;
-    unsigned char databuf[BUFFER_MAX];
-    struct stat sbuf;
-    int bytes = 0;
-    if(stat(args, &sbuf)==-1){
-        printf("File not exist.\n");
-    }
-    outfile = fopen(args, "w");
-    if(outfile == 0){
-        char buf[] = "450 Cannot create the file\r\n";
-        send(client_sockfd, buf, sizeof(buf), 0);
-        close(datafd);
-        return;
-    }
-
-    while ((bytes = read(datafd, databuf, BUFFER_MAX)) > 0)
-    {
-        write(fileno(outfile), databuf, bytes);
-    }
-    fclose(outfile);
-    close(datafd);
-    char buf[] = "226 Transfer complete\r\n";
-    send(client_sockfd, buf, sizeof(buf), 0);
-    return;
-
-    // char tmp[1024] = {0};
-    // getcwd(tmp, sizeof tmp);
-    // char filename_write[] = "/home/student/";
-    // strcat(filename_write, args);
-    // printf("filename_wirte=%s\n",filename_write);
-    // FILE *save_fp = fopen(filename_write, "w"); 
-
+    // char filename_read[] = "/home/student";
+    // strcat(filename_read, args);
+    // FILE *fp_rd = fopen(filename_read, "rb");
+    // if ( fp_rd == NULL) {
+    //     printf("fp_rd is NULL\n");
+    //     exit(-1);
+    // }
     // send(client_sockfd, get_open_succ, sizeof(get_open_succ), 0);
 
-    // memset(buffer,0,sizeof(buffer));
-    // if(chdir(tmp) == -1)
+    // char filename_write[] = "./";
+    // strcat(filename_write, args);
+    // FILE *fp_wt = fopen(filename_write, "rb");
+    // if ( fp_wt == NULL) {
+    //     printf("fp_wt is NULL\n");
     //     exit(-1);
-    // ssize_t length = read(datafd, buffer, sizeof(buffer) );  
-    // if( length == -1 ) {
-    //     fprintf(stderr, "Read Error:%s\n", strerror( errno ));
-    //     exit(1);
     // }
-    // else if ( length > 0){
-    //     fwrite(buffer, sizeof(char), length, save_fp);
+
+    // memset(buffer,0,sizeof(buffer));
+    // size_t nreads, nwrites;
+    // while(nreads = fread(buffer, sizeof(char), sizeof(buffer), fp_rd)){
+    //     printf("nreads=%d\n",nreads);
+    //     // nreads = fwrite(buffer, sizeof(char), sizeof(buffer), fp_wt);
+    //     // if((nwrites = write(datafd, buffer, nreads)) != nreads){
+    //     if((nwrites = write(datafd, buffer, nreads)) != nreads){
+    //         printf("nwrites=%d\n",nwrites);
+    //         fprintf(stderr, "write error\n");
+    //         fclose(fp_wt);
+    //         close(datafd);
+    //         exit(-1);
+    //     }
+    //     printf("nwrites=%d\n",nwrites);
+    //     fclose(fp_wt);
+    //     close(datafd);
+    //     send(client_sockfd, getfinish, sizeof(getfinish), 0);
     // }
-    // fclose( save_fp );
-    // close(datafd);
-    // send(client_sockfd, getfinish, sizeof(getfinish), 0);
 }
 
 void do_stat(char* filename, int sockfd)
@@ -729,3 +767,13 @@ void handle_TYPE(int client_sockfd, char *args){
     }
 
 }
+
+// void replace(char *p, char *src, char *des, int length)
+// {
+//     int i = 0;
+//     for(i=0; i<length; i++){
+//         if(p[i]==src){
+//             p[i]=des;
+//         }
+//     }
+// }

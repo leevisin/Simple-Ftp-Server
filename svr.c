@@ -16,7 +16,7 @@
 #include<time.h>
 #include <netdb.h>
 #include <sys/types.h>
-#include <netinet/tcp.h> // struct tcp_infoï¿½à¶¨ï¿½ï¿½
+#include <netinet/tcp.h> // struct tcp_infoÀà¶¨Òå
 #include <stdbool.h>
 
 #define PORT1  21
@@ -64,7 +64,7 @@ int main(int argc, char** argv){
             printf("accept socket error: %s(errno: %d)",strerror(errno),errno);
             exit(1);
     }
-    //ï¿½ï¿½Ê½ï¿½ï¿½Ê¼ 
+    //ÕýÊ½¿ªÊ¼ 
     printf("Accept client %s on TCP port %d\n", inet_ntoa(client_addr.sin_addr),ntohs(client_addr.sin_port));
 			char Entername[] = "220 please enter username\r\n";
 			char Enterpass[] = "331 please enter password\r\n";
@@ -90,20 +90,20 @@ int main(int argc, char** argv){
 			int flag_pass = 1;
 			
 			memset(buffer,0,sizeof(buffer));
-	    	send(client_sockfd, Entername, sizeof(Entername), 0);//ï¿½ï¿½ï¿½Í£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½ 
-   			int name_len = recv(client_sockfd, buffer, sizeof(buffer),0);//ï¿½ï¿½ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½ 
+	    	send(client_sockfd, Entername, sizeof(Entername), 0);//·¢ËÍ£¬ÇëÊäÈëÓÃ»§Ãû 
+   			int name_len = recv(client_sockfd, buffer, sizeof(buffer),0);//½ÓÊÕÓÃ»§Ãû 
    			printf("\nReceive username: %s",buffer);
    			
 			memset(buffer,0,sizeof(buffer));
    			send(client_sockfd, Enterpass, sizeof(Enterpass), 0);
-			int pass_len = recv(client_sockfd,buffer,sizeof(buffer),0);//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 
+			int pass_len = recv(client_sockfd,buffer,sizeof(buffer),0);//½ÓÊÕÃÜÂë 
 
 			pass_len = sizeof(buffer);			
 			printf("\nReceive password: %s", buffer);
-			if(strncmp(buffer,"PASS 111111",11)!=0){//ï¿½Ð¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ç·ï¿½ï¿½ï¿½È·
+			if(strncmp(buffer,"PASS 111111",11)!=0){//ÅÐ¶ÏÃÜÂëÊÇ·ñÕýÈ·
 			memset(buffer,0,sizeof(buffer));
    			send(client_sockfd, Wrongpass, sizeof(Wrongpass), 0);
-			while(1){//ï¿½ï¿½Ä»ï¿½ï¿½ï¿½ï¿½ï¿½Ñ­ï¿½ï¿½ 
+			while(1){//·ñµÄ»°½øÈëÑ­»· 
 				memset(buffer,0,sizeof(buffer));
         		int errorlen = recv(client_sockfd, buffer, sizeof(buffer),0);
         		printf("from client:%s\n",buffer);
@@ -120,23 +120,23 @@ int main(int argc, char** argv){
 			send(client_sockfd, succ , sizeof(succ), 0);
 			int sys = recv(client_sockfd, buffer, sizeof(buffer),0);
 			if(strncmp(buffer,"SYST",4)==0 || sys<=0){
-				send(client_sockfd, sysback , sizeof(sysback), 0);//ï¿½ï¿½ï¿½ï¿½systï¿½ï¿½ï¿½ï¿½Ä»Ø¸ï¿½ 
+				send(client_sockfd, sysback , sizeof(sysback), 0);//·¢ËÍsystÃüÁîµÄ»Ø¸´ 
 			}
 			
 
-    while(flag_pass){//ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½whileï¿½ï£¬Ö±ï¿½ï¿½ï¿½ï¿½quit 
+    while(flag_pass){//Èç¹ûÃ»³ö´í£¬½øµ½Õâ¸öwhileÀï£¬Ö±µ½°´quit 
        
         memset(buffer,0,sizeof(buffer));
         int len = recv(client_sockfd, buffer, sizeof(buffer),0);
         printf("from client:%s\n",buffer);
-		//ï¿½Ë³ï¿½ï¿½ï¿½ï¿½ï¿½ 
+		//ÍË³ö¹¦ÄÜ 
         if(strncmp(buffer,"QUIT",4)==0 || len<=0){
 			send(client_sockfd, Quitout, sizeof(Quitout), 0);
 			break; 
-		} //if quitï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-		//list,get,putï¿½ï¿½ï¿½ï¿½(ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½ï¿½20,tcpï¿½ï¿½)
+		} //if quitµÄÀ¨ºÅ
+		//list,get,put¹¦ÄÜ(ÏÖÔÚÎÒÖªµÀµÄÐèÒª¿ªÆô20,tcpµÄ)
 		else if(strncmp(buffer,"PORT 127,0,0,1",14)==0 || len<=0){
-			//ï¿½ï¿½Ê¼ï¿½ï¿½È¡Ä¿ï¿½ï¿½Ë¿Úºï¿½ 
+			//¿ªÊ¼½ØÈ¡Ä¿±ê¶Ë¿ÚºÅ 
 			char cRes[40960] = {0};	
 			int i = 0;
 			test(buffer, cRes);	
@@ -145,7 +145,7 @@ int main(int argc, char** argv){
 			int one = atoi(dst[3]);
 			int two = atoi(dst[4]);
 			int data_port=one*256 + two;
-			//ï¿½ï¿½È¡ï¿½ï¿½ï¿½ 
+			//½ØÈ¡Íê±Ï 
 			
 			send(client_sockfd, Activeport, sizeof(Activeport), 0);
     		memset(buffer,0,sizeof(buffer));
@@ -153,9 +153,9 @@ int main(int argc, char** argv){
         	printf("from client:%s\n",buffer);
 			
         	
-        	//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ls 
+        	//Èç¹ûÃüÁîÊÇls 
 			if(strncmp(buffer,"LIST",4)==0){		
-			//ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½Ë¿Ú£ï¿½ï¿½ï¿½ï¿½ï¿½Îª20
+			//¿ªÊ¼Á¬½ÓÄ¿±ê¶Ë¿Ú£¬×ÔÉíÎª20
     		struct sockaddr_in servaddr,mine;
     		int on,ret;
    			int sock_cli = socket(AF_INET,SOCK_STREAM, 0);
@@ -178,16 +178,16 @@ int main(int argc, char** argv){
         		perror("connect");
         		exit(1);
   			 }
-			//ï¿½ï¿½ï¿½ 
+			//Íê±Ï 
 			send(client_sockfd, LSITCODE, sizeof(LSITCODE), 0);
 			do_ls(".",sock_cli);
 			close(sock_cli);
 			send(client_sockfd, listfinish, sizeof(listfinish), 0);
-			} //listï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 
+			} //listµÄÀ¨ºÅ 
 			
-	    	//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½get 
+	    	//Èç¹ûÃüÁîÊÇget 
 		    else if(strncmp(buffer,"RETR",4)==0){
-	    		//ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½Ë¿Ú£ï¿½ï¿½ï¿½ï¿½ï¿½Îª20
+	    		//¿ªÊ¼Á¬½ÓÄ¿±ê¶Ë¿Ú£¬×ÔÉíÎª20
     		struct sockaddr_in servaddr,mine;
     		int on,ret;
    			int sock_cli = socket(AF_INET,SOCK_STREAM, 0);
@@ -210,7 +210,7 @@ int main(int argc, char** argv){
         		perror("connect");
         		exit(1);
   			 }
-			//ï¿½ï¿½ï¿½ 
+			//Íê±Ï 
    			char *str1 ="RETR ";
 			char *str2 ="STOR ";
 			char get_name[10];
@@ -242,12 +242,12 @@ int main(int argc, char** argv){
 			close( sock_cli );
     		send(client_sockfd, getfinish, sizeof(getfinish), 0);
 
-    		}//getï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 
+    		}//getÃüÁîµÄÀ¨ºÅ 
 			
 			
-			//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½put
+			//Èç¹ûÃüÁîÊÇput
 			else if(strncmp(buffer,"STOR",4)==0){
-				//ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½Ë¿Ú£ï¿½ï¿½ï¿½ï¿½ï¿½Îª20
+				//¿ªÊ¼Á¬½ÓÄ¿±ê¶Ë¿Ú£¬×ÔÉíÎª20
     		struct sockaddr_in servaddr,mine;
     		int on,ret;
    			int sock_cli = socket(AF_INET,SOCK_STREAM, 0);
@@ -268,7 +268,7 @@ int main(int argc, char** argv){
         		perror("connect");
         		exit(1);
   			 }
-			//ï¿½ï¿½ï¿½ 
+			//Íê±Ï 
 			char put_open_succ[]="150 OK to send data\r\n";
 			char putfinish[] = "226 Transfer complete\r\n";
 			char *str2 ="STOR ";
@@ -295,9 +295,9 @@ int main(int argc, char** argv){
 				fclose( save_fp );
 			close( sock_cli );
   			send(client_sockfd, putfinish, sizeof(putfinish), 0);
-			}//putï¿½Ä½ï¿½Î² 
+			}//putµÄ½áÎ² 
 			
-		}//ï¿½ï¿½Òª20ï¿½Ë¿Úµï¿½ï¿½ï¿½ï¿½ï¿½Ï¼ï¿½ï¿½ï¿½(else if)ï¿½ï¿½ï¿½ï¿½
+		}//ÐèÒª20¶Ë¿ÚµÄÃüÁîºÏ¼¯µÄ(else if)À¨ºÅ
 		else if(strncmp(buffer,"PWD",3)==0){
         char *workDir = NULL;//To make getcwd call malloc to allocate workDir dynamically, we set workDir to null and size to zero
         char workDiroutput[MAXSIZE];
@@ -399,7 +399,7 @@ int main(int argc, char** argv){
 		send(client_sockfd, renames, sizeof(renames), 0);
         }
 	
-    }//while(flag_pass)ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 
+    }//while(flag_pass)µÄÀ¨ºÅ 
          close(server_sockfd);
          close(client_sockfd);
     return 0;
@@ -427,7 +427,7 @@ int test(char *pcBuf, char *pcRes)
 	return SUCCESS;
 }
 
-int split(char dst[][80], char* str, const char* spl)//ï¿½Ö¸ï¿½ï¿½Ö·ï¿½ï¿½ï¿½ 
+int split(char dst[][80], char* str, const char* spl)//·Ö¸î×Ö·û´® 
 {
     int n = 0;
     char *result = NULL;
