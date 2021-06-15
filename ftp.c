@@ -78,7 +78,7 @@ void handle_RNFR(int, char *str);
 void handle_RNTO(int, char *str);
 void handle_QUIT(int);
 void handle_RETR(int, int, char *str);
-void handle_STOR(int, char *str);
+void handle_STOR(int, int, char *str);
 void handle_TYPE(int);
 void handle_PASV(int);
 int recv_fd(int sockfd);
@@ -469,7 +469,7 @@ void handle_RETR(int client_sockfd,int datafd, char *args){
         exit(-1);
     }
     send(client_sockfd, get_open_succ, sizeof(get_open_succ), 0);
-    // 问题读了两个有关
+    
     memset(buffer,0,sizeof(buffer));
     size_t nreads, nwrites;
     while(nreads = fread(buffer, sizeof(char), sizeof(buffer), fp)){
@@ -488,7 +488,32 @@ void handle_RETR(int client_sockfd,int datafd, char *args){
     }
 }
 
-voi handle_STOR(int client_sockfd, char* args){
+void handle_STOR(int client_sockfd, int datafd, char* args){
+    char filename[] = "/home/student/";
+    strcat(filename, args);
+    FILE *fp = fopen(filename, "rb");
+    if ( fp == NULL) {
+        printf("fp is NULL\n");
+        exit(-1);
+    }
+    send(client_sockfd, get_open_succ, sizeof(get_open_succ), 0);
+    
+    memset(buffer,0,sizeof(buffer));
+    size_t nreads, nwrites;
+    while(nreads = fread(buffer, sizeof(char), sizeof(buffer), fp)){
+        printf("nreads=%d\n",nreads);
+        if((nwrites = write(datafd, buffer, nreads)) != nreads){
+            printf("nwrites=%d\n",nwrites);
+            fprintf(stderr, "write error\n");
+            fclose(fp);
+            close(datafd);
+            exit(-1);
+        }
+        printf("nwrites=%d\n",nwrites);
+        fclose(fp);
+        close(datafd);
+        send(client_sockfd, getfinish, sizeof(getfinish), 0);
+    }
 }
 
 void do_stat(char* filename, int sockfd)
