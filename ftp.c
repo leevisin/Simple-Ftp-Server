@@ -51,9 +51,10 @@
 
 char* SERVER_IP = "127.0.0.1";
 char buffer[BUFFER_MAX];
-char *username; //用户名
+char username[100]; //用户名
 char *rnfr_name;
 int is_port = 1;
+struct sockaddr_in client_addr;
 struct sockaddr_in *p_addr; //port模式下对方的ip和port
 int data_fd; //数据传输fd
 int nobody_fd;//nobody进程所使用的fd
@@ -109,7 +110,7 @@ int main(int argc, char** argv){
     }
 
     int server_sockfd, client_sockfd;
-    struct sockaddr_in server_addr, client_addr;
+    struct sockaddr_in server_addr;
 
     //创建一个监听fd
     server_sockfd = tcp_server();
@@ -129,16 +130,18 @@ int main(int argc, char** argv){
     while(1){
         char com[COMMAND_MAX];//FTP指令
         char args[COMMAND_MAX];//FTP指令的参数
-        memset(buffer,0,sizeof(buffer));
+        
         memset(com, 0, sizeof (com));
         memset(args, 0, sizeof (args));
 
+        memset(buffer,0,sizeof(buffer));
         int len = recv(client_sockfd, buffer, sizeof(buffer),0);
 
         str_trim_crlf(buffer);
         str_split(buffer, com, args, ' ');
         str_upper(com);
         // Need to display user IP Action speed&file when transmitting
+        printf("Username=%s, IP=%s, ", username, inet_ntoa(client_addr.sin_addr));
         printf("Action=%s, Args=%s\n", com, args);
 
 		if (strcmp("USER", com) == 0) {
@@ -295,7 +298,7 @@ void handle_USER(int client_sockfd, char *args){
         sprintf(buf, "530 Login incorrect.\r\n");
         send(client_sockfd, buf, sizeof(buf), 0);
     }
-    username = args;
+    strcpy(username, args);
     send(client_sockfd, buf, sizeof(buf), 0);
 }
 
@@ -462,9 +465,9 @@ void handle_QUIT(int client_sockfd){
 }
 
 void handle_RETR(int client_sockfd,int datafd, char *args){
-    char filename[] = "./";
-    strcat(filename, args);
-    FILE *fp = fopen(filename, "rb");
+    // char filename[] = "./";
+    // strcat(filename, args);
+    FILE *fp = fopen(args, "rb");
     if ( fp == NULL) {
         printf("fp is NULL\n");
         exit(-1);
@@ -473,22 +476,18 @@ void handle_RETR(int client_sockfd,int datafd, char *args){
     
     memset(buffer,0,sizeof(buffer));
     size_t nreads, nwrites;
-    while(nreads = fread(buffer, sizeof(char), sizeof(buffer), fp)){
-        printf("buffer=%s",buffer);
-        printf("nreads=%d\n",nreads);
-
+    nreads = fread(buffer, sizeof(char), sizeof(buffer), fp);
         if((nwrites = write(datafd, buffer, nreads)) != nreads){
-            printf("nwrites=%d\n",nwrites);
             fprintf(stderr, "write error\n");
             fclose(fp);
             close(datafd);
             exit(-1);
         }
-    }
     printf("nwrites=%d\n",nwrites);
     fclose(fp);
     close(datafd);
     send(client_sockfd, getfinish, sizeof(getfinish), 0);
+    
 }
 
 void handle_STOR(int client_sockfd, int datafd, char* args){
@@ -645,6 +644,7 @@ int get_trans_data_fd(int client_sockfd){
         exit(1);
     }
 
+    //改一下回复，这个是list的回复
     send(client_sockfd, LSITCODE, sizeof(LSITCODE), 0);
     return sock_cli;
 
