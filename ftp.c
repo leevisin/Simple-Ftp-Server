@@ -468,26 +468,26 @@ void handle_QUIT(int client_sockfd){
 void handle_RETR(int client_sockfd,int datafd, char *args){
     // char filename[] = "./";
     // strcat(filename, args);
-    FILE *fp = fopen(args, "rb");
-    if ( fp == NULL) {
-        printf("fp is NULL\n");
-        exit(-1);
-    }
-    send(client_sockfd, get_open_succ, sizeof(get_open_succ), 0);
+    // FILE *fp = fopen(args, "rb");
+    // if ( fp == NULL) {
+    //     printf("fp is NULL\n");
+    //     exit(-1);
+    // }
+    // send(client_sockfd, get_open_succ, sizeof(get_open_succ), 0);
     
-    memset(buffer,0,sizeof(buffer));
-    size_t nreads, nwrites;
-    nreads = fread(buffer, sizeof(char), sizeof(buffer), fp);
-        if((nwrites = write(datafd, buffer, nreads)) != nreads){
-            fprintf(stderr, "write error\n");
-            fclose(fp);
-            close(datafd);
-            exit(-1);
-        }
-    printf("nwrites=%d\n",nwrites);
-    fclose(fp);
-    close(datafd);
-    send(client_sockfd, getfinish, sizeof(getfinish), 0);
+    // memset(buffer,0,sizeof(buffer));
+    // size_t nreads, nwrites;
+    // nreads = fread(buffer, sizeof(char), sizeof(buffer), fp);
+    //     if((nwrites = write(datafd, buffer, nreads)) != nreads){
+    //         fprintf(stderr, "write error\n");
+    //         fclose(fp);
+    //         close(datafd);
+    //         exit(-1);
+    //     }
+    // printf("nwrites=%d\n",nwrites);
+    // fclose(fp);
+    // close(datafd);
+    // send(client_sockfd, getfinish, sizeof(getfinish), 0);
     
 }
 
