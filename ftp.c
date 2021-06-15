@@ -488,6 +488,9 @@ void handle_RETR(int client_sockfd,int datafd, char *args){
     }
 }
 
+voi handle_STOR(int client_sockfd, char* args){
+}
+
 void do_stat(char* filename, int sockfd)
 {
 	struct stat info;
