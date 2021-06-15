@@ -130,10 +130,11 @@ int main(int argc, char** argv){
     while(1){
         char com[COMMAND_MAX];//FTP指令
         char args[COMMAND_MAX];//FTP指令的参数
-        memset(buffer,0,sizeof(buffer));
+        
         memset(com, 0, sizeof (com));
         memset(args, 0, sizeof (args));
 
+        memset(buffer,0,sizeof(buffer));
         int len = recv(client_sockfd, buffer, sizeof(buffer),0);
 
         str_trim_crlf(buffer);
@@ -309,7 +310,6 @@ void handle_PASS(int client_sockfd, char *args){
         sprintf(buf, "530 Login incorrect.\r\n");
         send(client_sockfd, buf, sizeof(buf), 0);
     }else{
-
 		sprintf(buf, "230 Login successful! Welcome!\r\n ");
 
 		//home---切换到主目录
@@ -465,33 +465,30 @@ void handle_QUIT(int client_sockfd){
 }
 
 void handle_RETR(int client_sockfd,int datafd, char *args){
-    char filename[] = "./";
-    strcat(filename, args);
-    FILE *fp = fopen(filename, "rb");
-    if ( fp == NULL) {
-        printf("fp is NULL\n");
-        exit(-1);
-    }
-    send(client_sockfd, get_open_succ, sizeof(get_open_succ), 0);
-    
-    memset(buffer,0,sizeof(buffer));
-    size_t nreads, nwrites;
-    while(nreads = fread(buffer, sizeof(char), sizeof(buffer), fp)){
-        printf("buffer=%s",buffer);
-        printf("nreads=%d\n",nreads);
 
-        if((nwrites = write(datafd, buffer, nreads)) != nreads){
-            printf("nwrites=%d\n",nwrites);
-            fprintf(stderr, "write error\n");
-            fclose(fp);
-            close(datafd);
-            exit(-1);
-        }
-    }
-    printf("nwrites=%d\n",nwrites);
-    fclose(fp);
-    close(datafd);
-    send(client_sockfd, getfinish, sizeof(getfinish), 0);
+
+    // char filename[] = "./";
+    // strcat(filename, args);
+    // FILE *fp = fopen(args, "rb");
+    // if ( fp == NULL) {
+    //     printf("fp is NULL\n");
+    //     exit(-1);
+    // }
+    // send(client_sockfd, get_open_succ, sizeof(get_open_succ), 0);
+    
+    // memset(buffer,0,sizeof(buffer));
+    // size_t nreads, nwrites;
+    // nreads = fread(buffer, sizeof(char), sizeof(buffer), fp);
+    //     if((nwrites = write(datafd, buffer, nreads)) != nreads){
+    //         fprintf(stderr, "write error\n");
+    //         fclose(fp);
+    //         close(datafd);
+    //         exit(-1);
+    //     }
+    // printf("nwrites=%d\n",nwrites);
+    // fclose(fp);
+    // close(datafd);
+    // send(client_sockfd, getfinish, sizeof(getfinish), 0);
 }
 
 void handle_STOR(int client_sockfd, int datafd, char* args){
@@ -648,6 +645,7 @@ int get_trans_data_fd(int client_sockfd){
         exit(1);
     }
 
+    //改一下回复，这个是list的回复
     send(client_sockfd, LSITCODE, sizeof(LSITCODE), 0);
     return sock_cli;
 
