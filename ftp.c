@@ -18,7 +18,7 @@
 #include <sys/types.h>
 #include <netinet/tcp.h>
 #include <stdbool.h>
-
+//
 // FTP服务进程向nobody进程请求的命令
 #define PRIV_SOCK_GET_DATA_SOCK 1
 #define PRIV_SOCK_PASV_ACTIVE 2
