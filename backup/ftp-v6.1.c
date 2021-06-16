@@ -36,12 +36,10 @@ char buffer[BUFFER_MAX];
 char username[100]; //用户名
 char password[100]; //密码
 char *rnfr_name;
-struct sockaddr_in client_addr, data_addr;
-socklen_t client_addr_len, data_addr_len;
+struct sockaddr_in client_addr;
 struct sockaddr_in *p_addr; //port模式下对方的ip和port
 int ascii_mode = 1;
 int isLogin = 0;
-int isPasv = 0;
 int data_sock;
 
 int tcp_server(void);
@@ -442,102 +440,51 @@ void handle_QUIT(int client_sockfd){
 
 void handle_RETR(int client_sockfd, char *args){
 
-    if(!isPasv){
-        int datafd = get_trans_data_fd(client_sockfd);
+    int datafd = get_trans_data_fd(client_sockfd);
 	
-        FILE *upfile;
-        unsigned char databuff[BUFFER_MAX] = "";
-        int bytes;
+    FILE *upfile;
+    unsigned char databuff[BUFFER_MAX] = "";
+    int bytes;
 
-        char reply[] = "226 Transfer complete\r\n";
+    char reply[] = "226 Transfer complete\r\n";
 
-        upfile = fopen(&buffer[5],"r");
-        if(upfile == 0)
-        {
-            perror("file open failed.\n");
-            stpcpy(reply, "550 Failed to open file.\r\n");
+    upfile = fopen(&buffer[5],"r");
+    if(upfile == 0)
+    {
+        perror("file open failed.\n");
+        stpcpy(reply, "550 Failed to open file.\r\n");
+    }
+    else
+    {
+        char mode[] = "ASCII";
+        if(ascii_mode==0){
+           sprintf(mode, "BINARY");
         }
-        else
+        sprintf(reply, "150 Opening %s mode data connection for %s (0 bytes)\r\n", mode, &buffer[5]);
+        write(client_sockfd, reply, strlen(reply));
+        while((bytes = read(fileno(upfile), databuff, BUFFER_MAX)) > 0)
         {
-            char mode[] = "ASCII";
-            if(ascii_mode==0){
-            sprintf(mode, "BINARY");
-            }
-            sprintf(reply, "150 Opening %s mode data connection for %s (0 bytes)\r\n", mode, &buffer[5]);
-            write(client_sockfd, reply, strlen(reply));
-            while((bytes = read(fileno(upfile), databuff, BUFFER_MAX)) > 0)
+            if(ascii_mode==1)
             {
-                if(ascii_mode==1)
-                {
-                    replace((char *)databuff, "\r\n", "\n", BUFFER_MAX-1);
-                    replace((char *)databuff, "\n", "\r\n", BUFFER_MAX-1);
-                    write(datafd, (const char *)databuff, strlen((const char *)databuff));
-                }
-                else if(ascii_mode==0)
-                {
-                    write(datafd, (const char *)databuff, bytes);
-                }
-                memset(&databuff, 0, BUFFER_MAX);
+                replace((char *)databuff, "\r\n", "\n", BUFFER_MAX-1);
+                replace((char *)databuff, "\n", "\r\n", BUFFER_MAX-1);
+                write(datafd, (const char *)databuff, strlen((const char *)databuff));
+            }
+            else if(ascii_mode==0)
+            {
+                write(datafd, (const char *)databuff, bytes);
             }
             memset(&databuff, 0, BUFFER_MAX);
-
-            fclose(upfile);
-            stpcpy(reply, "226 Transfer complete\r\n");
-            printf("file transfer complete!\n");
         }
+        memset(&databuff, 0, BUFFER_MAX);
 
-        close(datafd);
-        write(client_sockfd, reply, strlen(reply));
+        fclose(upfile);
+        stpcpy(reply, "226 Transfer complete\r\n");
+        printf("file transfer complete!\n");
     }
-    else{
-        //不能用
-        /* Passive mode */
-        int connection;
-        int fd;
-        struct stat stat_buf;
-        off_t offset = 0;
-        int sent_total = 0;
-        char reply[100] = {0};
 
-        client_addr_len = sizeof(client_addr);
-        if(access(&buffer[5],R_OK)==0 && (fd = open(&buffer[5],O_RDONLY))){
-            fstat(fd,&stat_buf);
-
-            stpcpy(reply, "150 Opening BINARY mode data connection for");
-            strcat(reply, &buffer[5]);
-            strcat(reply, ".\r\n");
-            printf("file transfer begin!\n");
-            write(client_sockfd, reply, strlen(reply));
-
-            connection=accept(data_sock,(struct sockaddr*) &client_addr,&client_addr_len);
-        
-            close(data_sock);
-            if(sent_total = sendfile(connection, fd, &offset, stat_buf.st_size)){
-
-                if(sent_total != stat_buf.st_size){
-                    perror("sendfile error!\n");
-                }
-                else{
-                    stpcpy(reply, "226 File has been downloaded OK.\r\n");
-                    printf("file transfer complete!\n");
-                    write(client_sockfd, reply, strlen(reply));
-                }
-            }
-            else{
-                stpcpy(reply, "550 Failed to read file.\r\n");
-                printf("Failed to get file!\n");
-                write(client_sockfd, reply, strlen(reply));
-            }
-        }
-        else{
-            stpcpy(reply, "550 Failed to get file\r\n");
-            printf("Failed to get file!\n");
-            write(client_sockfd, reply, strlen(reply));
-        }
-        close(fd);
-        close(connection);
-    }
-    
+    close(datafd);
+    write(client_sockfd, reply, strlen(reply));
 
 }
 
@@ -672,41 +619,38 @@ int replace(char *str, char *olds, char *news, int max_length)
 
 
 void handle_PASV(int client_sockfd, int datafd){
+    // socklen_t data_addr_len;
+    // unsigned long port1,port2;
+    // char p1[20],p2[20];
+    // srand(time(NULL));
+    // port1=128 + (rand() % 64);
+    // port2=rand() % 0xff;
+    // sprintf(p1,"%lu",port1);
+    // sprintf(p2,"%lu",port2);
+    // memset(&data_addr, 0, sizeof(data_addr));
+    // data_addr.sin_family = AF_INET;
+    // data_addr.sin_addr.s_addr = INADDR_ANY;
+    // data_addr.sin_port = htons((port1 << 8) + port2);
+    // datafd = socket(PF_INET, SOCK_STREAM, 0);
+    // data_addr_len = sizeof(data_addr);
     
-    char reply[100] = {0};
-    unsigned long port1,port2;
-    char p1[20],p2[20];
-    srand(time(NULL));
-    port1=128 + (rand() % 64);
-    port2=rand() % 0xff;
-    sprintf(p1,"%lu",port1);
-    sprintf(p2,"%lu",port2);
-    memset(&data_addr, 0, sizeof(data_addr));
-    data_addr.sin_family = AF_INET;
-    data_addr.sin_addr.s_addr = INADDR_ANY;
-    data_addr.sin_port = htons((port1 << 8) + port2);
-    data_sock = socket(PF_INET, SOCK_STREAM, 0);
-    data_addr_len = sizeof(data_addr);
+    // if(datafd==-1){
+    //     perror("socket create failed!\n");
+    //     stpcpy(reply, "500 Cannot connect to the data socket\r\n");
+    // }
+    // else if(bind(datafd,(struct sockaddr*) &data_addr, data_addr_len) < 0){
+    //     perror("bind error!\n");
+    //     stpcpy(reply, "500 Cannot connect to the data socket\r\n");
+    // }
+    // else{
+    //     listen(datafd,5);					
+    //     stpcpy(reply, "227 Entering Passive Mode (127,0,0,1,");
+    //     strcat(reply,p1);
+    //     strcat(reply,",");
+    //     strcat(reply,p2);
+    //     strcat(reply,").\r\n");
+    // }
 
-
-    if(data_sock==-1){
-        perror("socket create failed!\n");
-        stpcpy(reply, "500 Cannot connect to the data socket\r\n");
-    }
-    else if(bind(data_sock,(struct sockaddr*) &data_addr, data_addr_len) < 0){
-        perror("bind error!\n");
-        stpcpy(reply, "500 Cannot connect to the data socket\r\n");
-    }
-    else{
-        listen(data_sock,5);					
-        stpcpy(reply, "227 Entering Passive Mode (127,0,0,1,");
-        strcat(reply,p1);
-        strcat(reply,",");
-        strcat(reply,p2);
-        strcat(reply,").\r\n");
-    }
-
-    write(client_sockfd, reply, strlen(reply));
-    isPasv = 1;
-    
+    // write(client_sockfd, reply, strlen(reply));
+    // pasvstate=1;
 }
