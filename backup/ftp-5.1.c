@@ -1,4 +1,3 @@
-
 #include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
@@ -6,6 +5,7 @@
 #include<sys/types.h>
 #include<sys/socket.h>
 #include<netinet/in.h>
+#include<unistd.h>
 #include <arpa/inet.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -15,15 +15,20 @@
 #include<grp.h>
 #include<time.h>
 #include <netdb.h>
+#include <sys/types.h>
 #include <netinet/tcp.h>
 #include <stdbool.h>
-#include<ctype.h>
-#include<limits.h>
-#include <arpa/inet.h>
-#include <shadow.h> 
-#include<unistd.h>
+//
+// FTP服务进程向nobody进程请求的命令
+#define PRIV_SOCK_GET_DATA_SOCK 1
+#define PRIV_SOCK_PASV_ACTIVE 2
+#define PRIV_SOCK_PASV_LISTEN 3
+#define PRIV_SOCK_PASV_ACCEPT 4
 
-#define _XOPEN_SOURCE
+// nobody进程对FTP服务进程的应答
+#define PRIV_SOCK_RESULT_OK 1
+#define PRIV_SOCK_RESULT_BAD 2
+
 #define PORT1  21
 #define PORT2  20
 #define MAXLINE 4096
@@ -43,17 +48,19 @@
 #define getfinish "226 Transfer complete\r\n"
 #define succ "230 Login in successful\r\n"
 #define sysback "215 UNIX Type: L8\r\n"
-#define SERVER_IP "127.0.0.1"
 
+char* SERVER_IP = "127.0.0.1";
 char buffer[BUFFER_MAX];
 char username[100]; //用户名
-char password[100]; //密码
 char *rnfr_name;
+int is_port = 1;
 struct sockaddr_in client_addr;
 struct sockaddr_in *p_addr; //port模式下对方的ip和port
+int data_fd; //数据传输fd
+int nobody_fd;//nobody进程所使用的fd
+int proto_fd;//proto进程所使用的fd
 int data_port;
 int ascii_mode = 1;
-int isLogin = 0;
 
 int tcp_server(void);
 void str_trim_crlf(char *str);
@@ -66,7 +73,7 @@ void handle_PWD(int);
 void handle_DELE(int, char *str);
 void handle_PORT(int, char *str);
 void handle_CWD(int, char *str);
-void handle_LIST(int, int, char dirname[]);
+void handle_LIST(int, char dirname[]);
 void handle_MKD(int, char *str);
 void handle_RMD(int, char *str);
 void handle_RNFR(int, char *str);
@@ -78,8 +85,20 @@ void handle_TYPE(int, char *str);
 void handle_PASV(int);
 int recv_fd(int sockfd);
 int get_trans_data_fd(int);
+// void trans_list_common(int list);
+// char *statbuf_get_perms(struct stat *sbuf);
+// char *statbuf_get_user_info(struct stat *sbuf);
+// char *statbuf_get_size(struct stat *sbuf);
+// char *statbuf_get_date(struct stat *sbuf);
+// char *statbuf_get_filename(struct stat *sbuf, const char *name);
 int replace(char *str, char *olds, char *news, int max_length);
-
+void do_stat(char*,int);
+void show_file_info(char* ,struct stat*,int);
+void mode_to_letters(int ,char[]);
+char* uid_to_name(uid_t);
+char* gid_to_name(gid_t);
+int split(char dst[][80], char* str, const char* spl);
+int test(char *pcBuf, char *pcRes);
 
 int main(int argc, char** argv){
 
@@ -141,7 +160,10 @@ int main(int argc, char** argv){
 			handle_DELE(client_sockfd, args);
 		} else if (strcmp("LIST", com) == 0) {
             int datafd = get_trans_data_fd(client_sockfd);
-			handle_LIST(client_sockfd ,datafd, ".");
+            write(client_sockfd, LSITCODE, sizeof(LSITCODE));
+			handle_LIST(datafd, ".");
+            close(datafd);
+			write(client_sockfd, listfinish, sizeof(listfinish));
 		} else if (strcmp("MKD", com) == 0) {
 			handle_MKD(client_sockfd, args);
 		} else if (strcmp("RNFR", com) == 0) {
@@ -233,48 +255,74 @@ void str_upper(char *str)
     }
 }
 
+int split(char dst[][80], char* str, const char* spl)
+{
+    int n = 0;
+    char *result = NULL;
+    result = strtok(str, spl);
+    while( result != NULL )
+    {
+        strcpy(dst[n++], result);
+        result = strtok(NULL, spl);
+    }
+    return n;
+}
+
+int test(char *pcBuf, char *pcRes)
+{
+	char *pcBegin = NULL;
+	char *pcEnd = NULL;
+ 
+	pcBegin = strstr(pcBuf, ",");
+	pcEnd = strstr(pcBuf, "\r");
+ 
+	if(pcBegin == NULL || pcEnd == NULL || pcBegin > pcEnd)
+	{
+		printf("Mail name not found!\n");
+	}
+	else
+	{
+		pcBegin += strlen(":");
+		memcpy(pcRes, pcBegin, pcEnd-pcBegin);
+	}
+ 
+	return SUCCESS;
+}
 
 void handle_USER(int client_sockfd, char *args){
-    char reply[] = "331 Please specify the password.\r\n";
-    stpcpy(username, args);
-    printf("Username:%s\n",username);
-    stpcpy(reply, "331 Please spicify the password.\r\n");
-    write(client_sockfd, reply, strlen(reply));
-    printf("waiting for the password....\n");
+    struct passwd *pw;
+    char buf[] = "331 Please specify the password.\r\n";
+    // if((pw = getpwnam(args)) == NULL)
+    // {
+    //     sprintf(buf, "530 Login incorrect.\r\n");
+    //     write(client_sockfd, buf, sizeof(buf));
+    //     return;
+    // }
+
+    if(strncmp(args,"student",7)!=0){
+        sprintf(buf, "530 Login incorrect.\r\n");
+        write(client_sockfd, buf, sizeof(buf));
+    }
+    strcpy(username, args);
+    write(client_sockfd, buf, sizeof(buf));
 }
 
 void handle_PASS(int client_sockfd, char *args){
 
-    char reply[] = "230 Login successful! Welcome!\r\n";
+    char buf[] = "230 Login successful! Welcome!\r\n";
 
-    stpcpy(password, args);
-    printf("password:%s\n", password);
-    struct spwd *sp;
-    if((sp = getspnam(username)) == NULL)
-    {
-        stpcpy(reply, "530 Login incorrect.\r\n");
-        write(client_sockfd, reply, strlen(reply));
-        printf("login failed because of password!\n");
-        isLogin=0;
-    }
-    else if(strcmp(sp->sp_pwdp, (char*)crypt(password, sp->sp_pwdp))==0)
-    {
-        stpcpy(reply, "230 Login successful.\r\n");
-        write(client_sockfd, reply, strlen(reply));
-        printf("login successful!\n");
-        isLogin=1;
-        //home---切换到主目录
+    if(strncmp(buffer,"PASS 123456",11)!=0){
+        sprintf(buf, "530 Login incorrect.\r\n");
+        write(client_sockfd, buf, sizeof(buf));
+    }else{
+		sprintf(buf, "230 Login successful! Welcome!\r\n ");
+
+		//home---切换到主目录
 		if(chdir("/home/student") == -1)
 			exit(-1);
-    }
-    else
-    {
-        stpcpy(reply, "530 Login incorrect.\r\n");
-        write(client_sockfd, reply, strlen(reply));
-        printf("login failed because of password!\n");
-        isLogin=0;
-    }
 
+		write(client_sockfd, buf, sizeof(buf));
+	}
 }
 
 void handle_SYST(int client_sockfd){
@@ -331,47 +379,21 @@ void handle_PORT(int client_sockfd, char *args){
     write(client_sockfd, buf, sizeof(buf));
 }
 
-void handle_LIST(int client_sockfd, int datafd, char dirname[]){
-
-    char reply[] = "150 Here comes the directory listing.\r\n";
-    write(client_sockfd, reply, strlen(reply));
-    // printf("begin list...\n");
-
-    FILE *listopen;
-    char databuf[PIPE_BUF];
-    int n;
-
-    listopen = popen("ls -l","r"); //popen()会调用fork()产生子进程，然后从子进程中调用/bin/sh -c 来执行参数command 的指令
-    if(listopen == 0)
-    {
-        perror("ls stream open failed!\n");
-        stpcpy(reply, "500 Transfer stream error\r\n");
-        printf("stream error!\n");
-        close(datafd);
-    }
-    else
-    {
-        memset(databuf, 0, PIPE_BUF - 1);
-        while((n = read(fileno(listopen), databuf, PIPE_BUF)) > 0)
-        {	
-            replace(databuf, "\n", "\r\n", PIPE_BUF-1);
-            // printf("%s\n", databuf);
-            write(datafd, databuf, strlen(databuf));
-            memset(databuf, 0, PIPE_BUF - 1);
-        }
-        memset(databuf, 0, PIPE_BUF - 1);
-        if(pclose(listopen) != 0)
+void handle_LIST(int sockfd, char dirname[]){
+    /*list files in directory called dirname*/
+	DIR* dir_ptr;
+	struct dirent * direntp; /*each entry*/
+	if((dir_ptr = opendir(dirname)) == NULL)
+		perror("opendir fails");
+	while((direntp = readdir(dir_ptr)) !=NULL){
+        if (direntp->d_name[0]=='.')
         {
-            perror("Non-zero return value from \"ls -l\"\n");
-            printf("stream close error!\n");
+            continue;
         }
-        close(datafd);
-        stpcpy(reply, "226 Directory send OK.\r\n");
-        // printf("list complete!\n");
+        do_stat(direntp->d_name, sockfd);
     }
-    write(client_sockfd, reply, strlen(reply));
-
-
+		
+	closedir(dir_ptr);
 }
 
 void handle_MKD(int client_sockfd, char *args){
@@ -454,7 +476,65 @@ void handle_QUIT(int client_sockfd){
 }
 
 void handle_RETR(int client_sockfd,int datafd, char *args){
-	
+
+    // FILE *infile;
+    // unsigned char databuf[BUFFER_MAX] = "";
+    // int bytes;
+
+    // infile = fopen(args, "r");
+    // if(infile == 0){
+    //     close(datafd);
+    //     return;
+    // }
+
+    // while ((bytes = read(fileno(infile), databuf, BUFFER_MAX)) > 0)
+    // {
+    //     if(ascii_mode==1){
+    //         // replace((char *)databuf, "\r\n", "\n", BUFFER_MAX-1);
+    //         // replace((char *)databuf, "\n", "\r\n", BUFFER_MAX-1);
+    //         write(datafd, (const char *)databuf, strlen((const char *)databuf));
+    //     }
+    //     else if(ascii_mode==0){
+    //         write(datafd, (const char*)databuf, bytes);
+    //     }
+    //     memset(&databuf, 0, BUFFER_MAX);
+    // }
+    // memset(&databuf, 0, BUFFER_MAX);
+    // fclose(infile);
+    // close(datafd);
+    // char buf[] = "226 Transfer complete\r\n";
+    // write(client_sockfd, buf, sizeof(buf));
+    // return;
+
+    // // 可以用的
+    // char filename[20] = "./";
+    // strcat(filename, args);
+    // FILE *fp = fopen(filename, "rb");
+    // if ( fp == NULL) {
+    //     printf("fp is NULL\n");
+    //     exit(-1);
+    // }
+    // write(client_sockfd, get_open_succ, sizeof(get_open_succ));
+    
+    // memset(buffer,0,sizeof(buffer));
+    // size_t nreads, nwrites;
+    // if(chdir("/home/student") == -1)
+    //     exit(-1);
+    // while(nreads = fread(buffer, sizeof(char), sizeof(buffer), fp)){
+    //     if((nwrites = write(datafd, buffer, nreads)) != nreads){
+    //         fprintf(stderr, "write error\n");
+    //         fclose(fp);
+    //         close(datafd);
+    //         exit(-1);
+    //     }
+        
+    // }
+    // fclose(fp);
+    // close(datafd);
+    // write(client_sockfd, getfinish, sizeof(getfinish));
+
+    // printf("Connecting to the file....\n");
+		
     FILE *upfile;
     unsigned char databuff[BUFFER_MAX] = "";
     int bytes;
@@ -537,6 +617,91 @@ void handle_STOR(int client_sockfd, int datafd, char* args){
     write(client_sockfd, buf, strlen(buf));
 
 }
+
+void do_stat(char* filename, int sockfd)
+{
+	struct stat info;
+	if((stat(filename,&info)) == -1)
+		perror(filename);
+	else
+		show_file_info(filename,&info,sockfd);
+}
+ 
+void show_file_info(char* filename,struct stat * info_p,int sockfd)
+{
+	/*display the info about filename . the info is stored in struct at * info_p*/
+	char modestr[11];
+	mode_to_letters(info_p->st_mode,modestr);
+	char buf1[1024];
+	char buf2[1024];
+	char buf3[1024];
+	char buf4[1024];
+	char buf5[1024];
+	char buf6[1024];
+	char buf7[1024];
+	char buf[128];
+	memset(buf7,0,sizeof(buf7));
+	sprintf(buf1,"%s",modestr);
+	sprintf(buf2,"%s%4d ",buf1,(int)info_p->st_nlink);
+	sprintf(buf3,"%s%-8s ",buf2,uid_to_name(info_p->st_uid));
+	sprintf(buf4,"%s%-8s ",buf3,gid_to_name(info_p->st_gid));
+	sprintf(buf5,"%s%8ld ",buf4,(long)info_p->st_size);
+	sprintf(buf6,"%s%.12s ",buf5,ctime(&info_p->st_mtime)+4);
+	sprintf(buf7,"%s%s\n",buf6,filename);
+	sprintf(buf,"%s%s%s%s%s%s%s",buf1,buf2,buf3,buf4,buf5,buf6,buf7);
+	write(sockfd, buf7, strlen(buf7));
+}
+ 
+void mode_to_letters(int mode,char str[])
+{
+	strcpy(str,"----------");
+	if(S_ISDIR(mode)) str[0] = 'd';  //"directory ?"
+	if(S_ISCHR(mode)) str[0] = 'c';  //"char decices"?
+	if(S_ISBLK(mode)) str[0] = 'b';  //block device?
+	
+	//3 bits for user
+	if(mode&S_IRUSR) str[1] = 'r';
+	if(mode&S_IWUSR) str[2] = 'w';
+	if(mode&S_IXUSR) str[3] = 'x';
+	
+	//3 bits for group
+	if(mode&S_IRGRP) str[4] = 'r';
+	if(mode&S_IWGRP) str[5] = 'w';
+	if(mode&S_IXGRP) str[6] = 'x';
+	
+	//3 bits for other
+	if(mode&S_IROTH) str[7] = 'r';
+	if(mode&S_IWOTH) str[8] = 'w';
+	if(mode&S_IXOTH) str[9] = 'x';
+}
+ 
+char* uid_to_name(uid_t uid)
+{
+	struct passwd* pw_ptr;
+	static char numstr[10];
+	if((pw_ptr = getpwuid(uid)) == NULL)
+	{
+		sprintf(numstr,"%d",uid);
+		printf("world");
+		return numstr;
+	}
+	return pw_ptr->pw_name;
+}
+ 
+char* gid_to_name(gid_t gid)
+{
+	/*returns pointer to group number gid, used getgrgid*/
+	struct group* grp_ptr;
+	static char numstr[10];
+	if((grp_ptr = getgrgid(gid)) == NULL)
+	{
+		sprintf(numstr,"%d",gid);
+		return numstr;
+	}
+	else
+		return grp_ptr->gr_name;
+}
+
 
 int get_trans_data_fd(int client_sockfd){
     struct sockaddr_in servaddr, mine;
