@@ -38,9 +38,9 @@ char password[100]; //密码
 char *rnfr_name;
 struct sockaddr_in client_addr;
 struct sockaddr_in *p_addr; //port模式下对方的ip和port
+int data_port;
 int ascii_mode = 1;
 int isLogin = 0;
-int data_sock;
 
 int tcp_server(void);
 void str_trim_crlf(char *str);
@@ -53,16 +53,16 @@ void handle_PWD(int);
 void handle_DELE(int, char *str);
 void handle_PORT(int, char *str);
 void handle_CWD(int, char *str);
-void handle_LIST(int, char dirname[]);
+void handle_LIST(int, int, char dirname[]);
 void handle_MKD(int, char *str);
 void handle_RMD(int, char *str);
 void handle_RNFR(int, char *str);
 void handle_RNTO(int, char *str);
 void handle_QUIT(int);
-void handle_RETR(int, char *str);
-void handle_STOR(int, char *str);
+void handle_RETR(int, int, char *str);
+void handle_STOR(int, int, char *str);
 void handle_TYPE(int, char *str);
-void handle_PASV(int, int);
+void handle_PASV(int);
 int recv_fd(int sockfd);
 int get_trans_data_fd(int);
 int replace(char *str, char *olds, char *news, int max_length);
@@ -128,7 +128,8 @@ int main(int argc, char** argv){
 		} else if (strcmp("DELE", com) == 0) {
 			handle_DELE(client_sockfd, args);
 		} else if (strcmp("LIST", com) == 0) {
-			handle_LIST(client_sockfd, ".");
+            int datafd = get_trans_data_fd(client_sockfd);
+			handle_LIST(client_sockfd ,datafd, ".");
 		} else if (strcmp("MKD", com) == 0) {
 			handle_MKD(client_sockfd, args);
 		} else if (strcmp("RNFR", com) == 0) {
@@ -139,14 +140,15 @@ int main(int argc, char** argv){
 			handle_QUIT(client_sockfd);
 			break;
 		} else if (strcmp("RETR", com) == 0) {
-			handle_RETR(client_sockfd, args);
+            int datafd = get_trans_data_fd(client_sockfd);
+			handle_RETR(client_sockfd, datafd, args);
 		} else if (strcmp("STOR", com) == 0) {
-			handle_STOR(client_sockfd, args);
+            int datafd = get_trans_data_fd(client_sockfd);
+			handle_STOR(client_sockfd, datafd, args);
 		} else if (strcmp("TYPE", com) == 0) {
 			handle_TYPE(client_sockfd, args);
 		} else if (strcmp("PASV", com) == 0) {
-            int datafd = get_trans_data_fd(client_sockfd);
-			handle_PASV(client_sockfd, datafd);
+			// handle_PASV(client_sockfd);
 		} else {
 			char buf[] = "Unimplement command.\r\n";
 			write(client_sockfd, buf, strlen(buf));
@@ -314,9 +316,7 @@ void handle_PORT(int client_sockfd, char *args){
     write(client_sockfd, buf, strlen(buf));
 }
 
-void handle_LIST(int client_sockfd, char dirname[]){
-
-    int datafd = get_trans_data_fd(client_sockfd);
+void handle_LIST(int client_sockfd, int datafd, char dirname[]){
 
     char reply[] = "150 Here comes the directory listing.\r\n";
     write(client_sockfd, reply, strlen(reply));
@@ -438,9 +438,7 @@ void handle_QUIT(int client_sockfd){
     write(client_sockfd, buf, strlen(buf));
 }
 
-void handle_RETR(int client_sockfd, char *args){
-
-    int datafd = get_trans_data_fd(client_sockfd);
+void handle_RETR(int client_sockfd,int datafd, char *args){
 	
     FILE *upfile;
     unsigned char databuff[BUFFER_MAX] = "";
@@ -488,10 +486,7 @@ void handle_RETR(int client_sockfd, char *args){
 
 }
 
-void handle_STOR(int client_sockfd, char* args){
-
-    int datafd = get_trans_data_fd(client_sockfd);
-
+void handle_STOR(int client_sockfd, int datafd, char* args){
     FILE *downfile;
     unsigned char databuff[BUFFER_MAX];
     int bytes = 0;
@@ -529,28 +524,28 @@ void handle_STOR(int client_sockfd, char* args){
 }
 
 int get_trans_data_fd(int client_sockfd){
-    struct sockaddr_in clntaddr, srvraddr;
+    struct sockaddr_in servaddr, mine;
 
     int sock_cli = socket(AF_INET,SOCK_STREAM, 0);
-    srvraddr.sin_family = AF_INET;
-    srvraddr.sin_port = htons(20);  
-    srvraddr.sin_addr.s_addr = inet_addr(SERVER_IP);
+    mine.sin_family = AF_INET;
+    mine.sin_port = htons(20);  
+    mine.sin_addr.s_addr = inet_addr(SERVER_IP);
 
     // 设置端口复用的套接字
     int opt = 1;
     setsockopt(sock_cli, SOL_SOCKET, SO_REUSEADDR, (const void *)&opt, sizeof(opt));
 
-    if(bind(sock_cli, (struct sockaddr*)&srvraddr, sizeof(srvraddr))<0){
+    if(bind(sock_cli, (struct sockaddr*)&mine, sizeof(mine))<0){
         printf("bind socket error: %s(errno: %d)\n",strerror(errno),errno);
         return 0;
     }
 
-    memset(&clntaddr, 0, sizeof(clntaddr));
-    clntaddr.sin_family = AF_INET;
-    clntaddr.sin_port = p_addr->sin_port;  
-    clntaddr.sin_addr.s_addr = p_addr->sin_addr.s_addr;
+    memset(&servaddr, 0, sizeof(servaddr));
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_port = p_addr->sin_port;  
+    servaddr.sin_addr.s_addr = p_addr->sin_addr.s_addr;
     
-    int con = connect(sock_cli, (struct sockaddr *)&clntaddr, sizeof(clntaddr));
+    int con = connect(sock_cli, (struct sockaddr *)&servaddr, sizeof(servaddr));
     
     if (con < 0)
     {
@@ -617,40 +612,3 @@ int replace(char *str, char *olds, char *news, int max_length)
     return i;
 }
 
-
-void handle_PASV(int client_sockfd, int datafd){
-    // socklen_t data_addr_len;
-    // unsigned long port1,port2;
-    // char p1[20],p2[20];
-    // srand(time(NULL));
-    // port1=128 + (rand() % 64);
-    // port2=rand() % 0xff;
-    // sprintf(p1,"%lu",port1);
-    // sprintf(p2,"%lu",port2);
-    // memset(&data_addr, 0, sizeof(data_addr));
-    // data_addr.sin_family = AF_INET;
-    // data_addr.sin_addr.s_addr = INADDR_ANY;
-    // data_addr.sin_port = htons((port1 << 8) + port2);
-    // datafd = socket(PF_INET, SOCK_STREAM, 0);
-    // data_addr_len = sizeof(data_addr);
-    
-    // if(datafd==-1){
-    //     perror("socket create failed!\n");
-    //     stpcpy(reply, "500 Cannot connect to the data socket\r\n");
-    // }
-    // else if(bind(datafd,(struct sockaddr*) &data_addr, data_addr_len) < 0){
-    //     perror("bind error!\n");
-    //     stpcpy(reply, "500 Cannot connect to the data socket\r\n");
-    // }
-    // else{
-    //     listen(datafd,5);					
-    //     stpcpy(reply, "227 Entering Passive Mode (127,0,0,1,");
-    //     strcat(reply,p1);
-    //     strcat(reply,",");
-    //     strcat(reply,p2);
-    //     strcat(reply,").\r\n");
-    // }
-
-    // write(client_sockfd, reply, strlen(reply));
-    // pasvstate=1;
-}
