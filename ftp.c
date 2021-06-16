@@ -451,7 +451,7 @@ void handle_RETR(int client_sockfd, char *args){
 
         char reply[] = "226 Transfer complete\r\n";
 
-        upfile = fopen(&buffer[5],"r");
+        upfile = fopen(args,"r");
         if(upfile == 0)
         {
             perror("file open failed.\n");
@@ -463,7 +463,7 @@ void handle_RETR(int client_sockfd, char *args){
             if(ascii_mode==0){
             sprintf(mode, "BINARY");
             }
-            sprintf(reply, "150 Opening %s mode data connection for %s (0 bytes)\r\n", mode, &buffer[5]);
+            sprintf(reply, "150 Opening %s mode data connection for %s (0 bytes)\r\n", mode, args);
             write(client_sockfd, reply, strlen(reply));
             while((bytes = read(fileno(upfile), databuff, BUFFER_MAX)) > 0)
             {
@@ -500,11 +500,11 @@ void handle_RETR(int client_sockfd, char *args){
         char reply[100] = {0};
 
         client_addr_len = sizeof(client_addr);
-        if(access(&buffer[5],R_OK)==0 && (fd = open(&buffer[5],O_RDONLY))){
+        if(access(args,R_OK)==0 && (fd = open(args,O_RDONLY))){
             fstat(fd,&stat_buf);
 
             stpcpy(reply, "150 Opening BINARY mode data connection for");
-            strcat(reply, &buffer[5]);
+            strcat(reply, args);
             strcat(reply, ".\r\n");
             printf("file transfer begin!\n");
             write(client_sockfd, reply, strlen(reply));
@@ -551,7 +551,7 @@ void handle_STOR(int client_sockfd, char* args){
 
     char buf[] = "226 Transfer complete\r\n";
 
-    downfile = fopen(&buffer[5], "w");
+    downfile = fopen(args, "w");
     if(downfile == 0)
     {
         perror("file open failed!\n");
@@ -564,7 +564,7 @@ void handle_STOR(int client_sockfd, char* args){
         if(ascii_mode==0){
            sprintf(mode, "BINARY");
         }
-        sprintf(buf, "150 Opening %s mode data connection for %s (0 bytes)\r\n", mode, &buffer[5]);
+        sprintf(buf, "150 Opening %s mode data connection for %s (0 bytes)\r\n", mode, args);
         write(client_sockfd, buf, strlen(buf));
         // printf("file opened!\n"); 
         while((bytes = read(datafd, databuff, BUFFER_MAX)) > 0)
