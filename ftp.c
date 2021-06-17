@@ -819,7 +819,7 @@ void limit_rate(int bytes_transfered, int is_upload)
 	}
  
 	//计算睡眠时间
-	//睡眠时间=（当前传输速度/最大传输速度-1）*当前传输时间��;
+	//睡眠时间=（当前传输速度/最大传输速度-1）*当前传输时间;
 	double pause_time;
 	//需要睡眠的时间
 	pause_time = (rate_ratio - (double)1) * elapsed;
