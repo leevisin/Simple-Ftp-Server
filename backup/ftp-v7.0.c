@@ -13,13 +13,11 @@
 #include<arpa/inet.h>
 #include<errno.h>
 #include<dirent.h>
-#include<sys/time.h>
 #include<time.h>
 #include<ctype.h>
 #include<fcntl.h>
 #include <arpa/inet.h>
-#include <shadow.h>
-
+#include <shadow.h> 
 
 #define PORT1  21
 #define PORT2  20
@@ -28,8 +26,6 @@
 #define COMMAND_MAX 1024
 #define SUCCESS 0
 #define SERVER_IP "127.0.0.1"
-#define bw_upload_rate_max 10
-#define bw_download_rate_max 10
 
 char buffer[BUFFER_MAX];
 char username[100]; //用户名
@@ -42,9 +38,6 @@ int ascii_mode = 1;
 int isLogin = 0;
 int isPasv = 0;
 int data_sock;
-long bw_transfer_start_sec = 0;
-long bw_transfer_start_usec = 0;
-static struct timeval tv = {0, 0}; //全局变量
 
 int tcp_server(void);
 void str_trim_crlf(char *str);
@@ -70,10 +63,7 @@ void handle_PASV(int);
 int recv_fd(int sockfd);
 int get_trans_data_fd(int);
 int replace(char *str, char *olds, char *news, int max_length);
-void limit_rate(int bytes_transfered, int is_upload);
-int get_time_sec();
-int get_time_usec();
-int nano_sleep(double t);
+
 
 int main(int argc, char** argv){
 
@@ -453,12 +443,9 @@ void handle_QUIT(int client_sockfd){
 
 void handle_RETR(int client_sockfd, char *args){
 
-    bw_transfer_start_sec = get_time_sec();
-    bw_transfer_start_usec = get_time_usec();
-
     if(isPasv==0){
         int datafd = get_trans_data_fd(client_sockfd);
-
+	
         FILE *upfile;
         unsigned char databuff[BUFFER_MAX] = "";
         int bytes;
@@ -475,9 +462,9 @@ void handle_RETR(int client_sockfd, char *args){
         {
             char mode[] = "ASCII";
             if(ascii_mode==0){
-                sprintf(mode, "BINARY");
+            sprintf(mode, "BINARY");
             }
-            sprintf(reply, "150 Opening %s mode data connection for %s.\r\n", mode, args);
+            sprintf(reply, "150 Opening %s mode data connection for %s (0 bytes)\r\n", mode, args);
             write(client_sockfd, reply, strlen(reply));
             while((bytes = read(fileno(upfile), databuff, BUFFER_MAX)) > 0)
             {
@@ -491,7 +478,6 @@ void handle_RETR(int client_sockfd, char *args){
                 {
                     write(datafd, (const char *)databuff, bytes);
                 }
-                limit_rate(bytes, 0);
                 memset(&databuff, 0, BUFFER_MAX);
             }
             memset(&databuff, 0, BUFFER_MAX);
@@ -515,7 +501,7 @@ void handle_RETR(int client_sockfd, char *args){
         if(access(args,R_OK)==0 && (fd = open(args,O_RDONLY))){
             fstat(fd,&stat_buf);
 
-            stpcpy(reply, "150 Opening BINARY mode data connection for ");
+            stpcpy(reply, "150 Opening BINARY mode data connection for");
             strcat(reply, args);
             strcat(reply, ".\r\n");
             // printf("file transfer begin!\n");
@@ -555,9 +541,6 @@ void handle_RETR(int client_sockfd, char *args){
 
 void handle_STOR(int client_sockfd, char* args){
 
-    bw_transfer_start_sec = get_time_sec();
-    bw_transfer_start_usec = get_time_usec();
-
     if(isPasv==0){
         int datafd = get_trans_data_fd(client_sockfd);
 
@@ -578,16 +561,13 @@ void handle_STOR(int client_sockfd, char* args){
         {
             char mode[] = "ASCII";
             if(ascii_mode==0){
-                sprintf(mode, "BINARY");
+            sprintf(mode, "BINARY");
             }
-            sprintf(buf, "150 Opening %s mode data connection for %s.\r\n", mode, args);
+            sprintf(buf, "150 Opening %s mode data connection for %s (0 bytes)\r\n", mode, args);
             write(client_sockfd, buf, strlen(buf));
             // printf("file opened!\n"); 
             while((bytes = read(datafd, databuff, BUFFER_MAX)) > 0)
             {
-                if(isLogin==0){
-                    limit_rate(bytes, 1);
-                }
                 write(fileno(downfile), databuff, bytes);
             }
 
@@ -629,18 +609,18 @@ void handle_STOR(int client_sockfd, char* args){
                 write(client_sockfd, reply, strlen(reply));
                 // printf("Begin transfering data.....\n");
 
-                /* Using splice function for file receiving.
-                * The splice() system call first appeared in Linux 2.6.17.
-                */
+            /* Using splice function for file receiving.
+            * The splice() system call first appeared in Linux 2.6.17.
+            */
 
                 while ((res = splice(connection, 0, pipefd[1], NULL, buff_size, SPLICE_F_MORE | SPLICE_F_MOVE))>0)
                 {
                     splice(pipefd[0], NULL, fd, 0, buff_size, SPLICE_F_MORE | SPLICE_F_MOVE);
                 }
 
-                /* TODO: signal with ABOR command to exit */
+            /* TODO: signal with ABOR command to exit */
 
-                /* Internal error */
+            /* Internal error */
                 if(res==-1){
                     perror("splice file failed!\n");
                     stpcpy(reply, "550 Failed to open pipe.\r\n");
@@ -786,98 +766,4 @@ void handle_PASV(int client_sockfd){
     write(client_sockfd, reply, strlen(reply));
     isPasv = 1;
     
-}
-
-//限速，计算睡眠时间，第二个参数是当前传输的字节数
-void limit_rate(int bytes_transfered, int is_upload)
-{ 
-	// 睡眠时间=（当前传输速度/最大传输速度-1）*当前传输时间;
-	long curr_sec = get_time_sec();
-	long curr_usec = get_time_usec();
- 
-	//流过的时间，当前所用的传输时间
-	double elapsed;
-	elapsed = (double)(curr_sec - bw_transfer_start_sec);
-	//秒+微秒
-	elapsed += (double)(curr_usec - bw_transfer_start_usec) / (double)1000000;
-	if (elapsed <= (double)0) {//等于0的情况有可能，因为传的太快了
-		elapsed = (double)0.01;
-	}
- 
- 
-	// 计算当前传输速度，传输的量除以传输时间,忽略了传输速度的小数部分
-	unsigned int bw_rate = (unsigned int)((double)bytes_transfered / elapsed);
- 
-	double rate_ratio;
-	//上传
-	if (is_upload) {
-		//当前速度小于上传速度
-		if (bw_rate <= bw_upload_rate_max) {
-			// 不需要限速，也需要更新时间
-			bw_transfer_start_sec = curr_sec;
-			bw_transfer_start_usec = curr_usec;
-			return;
-		}
- 
-		//根据公式进行计算
-		rate_ratio = bw_rate / bw_upload_rate_max;
-	}
-	//下载
-	else {
-		if (bw_rate <= bw_download_rate_max) {
-			//不需要限速 
-			bw_transfer_start_sec = curr_sec;
-			bw_transfer_start_usec = curr_usec;
-			return;
-		}
- 
-		rate_ratio = bw_rate / bw_download_rate_max;
-	}
- 
-	//计算睡眠时间
-	//睡眠时间=（当前传输速度/最大传输速度-1）*当前传输时间��;
-	double pause_time;
-	//需要睡眠的时间
-	pause_time = (rate_ratio - (double)1) * elapsed;
- 
-	//进行睡眠
-	nano_sleep(pause_time);
- 
-	//更新时间，下一次要开始传输的时间更新为当前时间
-	bw_transfer_start_sec = get_time_sec();
-	bw_transfer_start_usec = get_time_usec();
- 
-}
-
-
-int get_time_sec()
-{
-    if(gettimeofday(&tv, NULL) == -1)
-        exit(-1);
-    return tv.tv_sec;
-}
-
-int get_time_usec()
-{
-    return tv.tv_usec;
-}
-
-int nano_sleep(double t)
-{
-    int sec = (time_t)t;//取整数部分
-    int nsec = (t - sec) * 1000000000;
-    //int nanosleep(const struct timespec *req, struct timespec *rem);
-    struct timespec ts;
-    ts.tv_sec = sec;
-    ts.tv_nsec = nsec;
-
-    int ret;
-    do
-    {//当睡眠被打断时，剩余时间放到ts里面
-        ret = nanosleep(&ts, &ts);
-    }
-    while(ret == -1 && errno == EINTR)
-        ;
-
-    return ret;
 }

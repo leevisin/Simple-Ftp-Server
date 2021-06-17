@@ -1,26 +1,29 @@
-#define _GNU_SOURCE
+
 #include<stdio.h>
-#include<unistd.h>
 #include<stdlib.h>
-#include<limits.h>
 #include<string.h>
-#include<ctype.h>
+#include<errno.h>
 #include<sys/types.h>
 #include<sys/socket.h>
-#include<sys/stat.h>
-#include<netdb.h>
 #include<netinet/in.h>
-#include<arpa/inet.h>
-#include<errno.h>
-#include<dirent.h>
-#include<sys/time.h>
-#include<time.h>
-#include<ctype.h>
-#include<fcntl.h>
 #include <arpa/inet.h>
-#include <shadow.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <stddef.h>
+#include <dirent.h>
+#include<pwd.h>
+#include<grp.h>
+#include<time.h>
+#include <netdb.h>
+#include <netinet/tcp.h>
+#include <stdbool.h>
+#include<ctype.h>
+#include<limits.h>
+#include <arpa/inet.h>
+#include <shadow.h> 
+#include<unistd.h>
 
-
+#define _XOPEN_SOURCE
 #define PORT1  21
 #define PORT2  20
 #define MAXLINE 4096
@@ -28,8 +31,6 @@
 #define COMMAND_MAX 1024
 #define SUCCESS 0
 #define SERVER_IP "127.0.0.1"
-#define bw_upload_rate_max 10
-#define bw_download_rate_max 10
 
 char buffer[BUFFER_MAX];
 char username[100]; //用户名
@@ -42,9 +43,6 @@ int ascii_mode = 1;
 int isLogin = 0;
 int isPasv = 0;
 int data_sock;
-long bw_transfer_start_sec = 0;
-long bw_transfer_start_usec = 0;
-static struct timeval tv = {0, 0}; //全局变量
 
 int tcp_server(void);
 void str_trim_crlf(char *str);
@@ -66,14 +64,11 @@ void handle_QUIT(int);
 void handle_RETR(int, char *str);
 void handle_STOR(int, char *str);
 void handle_TYPE(int, char *str);
-void handle_PASV(int);
+void handle_PASV(int, int);
 int recv_fd(int sockfd);
 int get_trans_data_fd(int);
 int replace(char *str, char *olds, char *news, int max_length);
-void limit_rate(int bytes_transfered, int is_upload);
-int get_time_sec();
-int get_time_usec();
-int nano_sleep(double t);
+
 
 int main(int argc, char** argv){
 
@@ -146,22 +141,17 @@ int main(int argc, char** argv){
 			handle_QUIT(client_sockfd);
 			break;
 		} else if (strcmp("RETR", com) == 0) {
-            if(isLogin){
-                handle_RETR(client_sockfd, args);
-            }
-            else{
-                char buf[] = "Please Login in to Download File.\r\n";
-                write(client_sockfd, buf, strlen(buf));
-            }
+			handle_RETR(client_sockfd, args);
 		} else if (strcmp("STOR", com) == 0) {
 			handle_STOR(client_sockfd, args);
 		} else if (strcmp("TYPE", com) == 0) {
 			handle_TYPE(client_sockfd, args);
 		} else if (strcmp("PASV", com) == 0) {
-			handle_PASV(client_sockfd);
+            int datafd = get_trans_data_fd(client_sockfd);
+			handle_PASV(client_sockfd, datafd);
 		} else {
-            char buf[] = "Unimplement command.\r\n";
-            write(client_sockfd, buf, strlen(buf));
+			char buf[] = "Unimplement command.\r\n";
+			write(client_sockfd, buf, strlen(buf));
 		}
 
     }
@@ -235,10 +225,10 @@ void str_upper(char *str)
 void handle_USER(int client_sockfd, char *args){
     char reply[] = "331 Please specify the password.\r\n";
     stpcpy(username, args);
-    // printf("Username:%s\n",username);
+    printf("Username:%s\n",username);
     stpcpy(reply, "331 Please spicify the password.\r\n");
     write(client_sockfd, reply, strlen(reply));
-    // printf("waiting for the password....\n");
+    printf("waiting for the password....\n");
 }
 
 void handle_PASS(int client_sockfd, char *args){
@@ -246,7 +236,7 @@ void handle_PASS(int client_sockfd, char *args){
     char reply[] = "230 Login successful! Welcome!\r\n";
 
     stpcpy(password, args);
-    // printf("password:%s\n", password);
+    printf("password:%s\n", password);
     struct spwd *sp;
     if((sp = getspnam(username)) == NULL)
     {
@@ -305,7 +295,6 @@ void handle_CWD(int client_sockfd, char *args){
 
 void handle_PORT(int client_sockfd, char *args){
     //设置主动工作模式
-    isPasv = 0;
     unsigned int v[6] = {0};
     sscanf(args, "%u,%u,%u,%u,%u,%u", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]);
 
@@ -453,12 +442,9 @@ void handle_QUIT(int client_sockfd){
 
 void handle_RETR(int client_sockfd, char *args){
 
-    bw_transfer_start_sec = get_time_sec();
-    bw_transfer_start_usec = get_time_usec();
-
-    if(isPasv==0){
+    if(!isPasv){
         int datafd = get_trans_data_fd(client_sockfd);
-
+	
         FILE *upfile;
         unsigned char databuff[BUFFER_MAX] = "";
         int bytes;
@@ -475,9 +461,9 @@ void handle_RETR(int client_sockfd, char *args){
         {
             char mode[] = "ASCII";
             if(ascii_mode==0){
-                sprintf(mode, "BINARY");
+            sprintf(mode, "BINARY");
             }
-            sprintf(reply, "150 Opening %s mode data connection for %s.\r\n", mode, args);
+            sprintf(reply, "150 Opening %s mode data connection for %s (0 bytes)\r\n", mode, args);
             write(client_sockfd, reply, strlen(reply));
             while((bytes = read(fileno(upfile), databuff, BUFFER_MAX)) > 0)
             {
@@ -491,21 +477,23 @@ void handle_RETR(int client_sockfd, char *args){
                 {
                     write(datafd, (const char *)databuff, bytes);
                 }
-                limit_rate(bytes, 0);
                 memset(&databuff, 0, BUFFER_MAX);
             }
             memset(&databuff, 0, BUFFER_MAX);
 
             fclose(upfile);
             stpcpy(reply, "226 Transfer complete\r\n");
-            // printf("file transfer complete!\n");
+            printf("file transfer complete!\n");
         }
 
         close(datafd);
         write(client_sockfd, reply, strlen(reply));
     }
     else{
-        int connection, fd;
+        //不能用
+        /* Passive mode */
+        int connection;
+        int fd;
         struct stat stat_buf;
         off_t offset = 0;
         int sent_total = 0;
@@ -515,10 +503,10 @@ void handle_RETR(int client_sockfd, char *args){
         if(access(args,R_OK)==0 && (fd = open(args,O_RDONLY))){
             fstat(fd,&stat_buf);
 
-            stpcpy(reply, "150 Opening BINARY mode data connection for ");
+            stpcpy(reply, "150 Opening BINARY mode data connection for");
             strcat(reply, args);
             strcat(reply, ".\r\n");
-            // printf("file transfer begin!\n");
+            printf("file transfer begin!\n");
             write(client_sockfd, reply, strlen(reply));
 
             connection=accept(data_sock,(struct sockaddr*) &client_addr,&client_addr_len);
@@ -531,7 +519,7 @@ void handle_RETR(int client_sockfd, char *args){
                 }
                 else{
                     stpcpy(reply, "226 File has been downloaded OK.\r\n");
-                    // printf("file transfer complete!\n");
+                    printf("file transfer complete!\n");
                     write(client_sockfd, reply, strlen(reply));
                 }
             }
@@ -555,107 +543,42 @@ void handle_RETR(int client_sockfd, char *args){
 
 void handle_STOR(int client_sockfd, char* args){
 
-    bw_transfer_start_sec = get_time_sec();
-    bw_transfer_start_usec = get_time_usec();
+    int datafd = get_trans_data_fd(client_sockfd);
 
-    if(isPasv==0){
-        int datafd = get_trans_data_fd(client_sockfd);
+    FILE *downfile;
+    unsigned char databuff[BUFFER_MAX];
+    int bytes = 0;
 
-        FILE *downfile;
-        unsigned char databuff[BUFFER_MAX];
-        int bytes = 0;
+    char buf[] = "226 Transfer complete\r\n";
 
-        char buf[] = "226 Transfer complete\r\n";
-
-        downfile = fopen(args, "w");
-        if(downfile == 0)
-        {
-            perror("file open failed!\n");
-            stpcpy(buf, "450 Cannot create the file\r\n");
-            close(datafd);
+    downfile = fopen(args, "w");
+    if(downfile == 0)
+    {
+        perror("file open failed!\n");
+        stpcpy(buf, "450 Cannot create the file\r\n");
+        close(datafd);
+    }
+    else
+    {
+        char mode[] = "ASCII";
+        if(ascii_mode==0){
+           sprintf(mode, "BINARY");
         }
-        else
-        {
-            char mode[] = "ASCII";
-            if(ascii_mode==0){
-                sprintf(mode, "BINARY");
-            }
-            sprintf(buf, "150 Opening %s mode data connection for %s.\r\n", mode, args);
-            write(client_sockfd, buf, strlen(buf));
-            // printf("file opened!\n"); 
-            while((bytes = read(datafd, databuff, BUFFER_MAX)) > 0)
-            {
-                if(isLogin==0){
-                    limit_rate(bytes, 1);
-                }
-                write(fileno(downfile), databuff, bytes);
-            }
-
-            fclose(downfile);
-            close(datafd);
-            stpcpy(buf, "226 Transfer complete\r\n");
-            // printf("file transfer complete!\n");
-        }
+        sprintf(buf, "150 Opening %s mode data connection for %s (0 bytes)\r\n", mode, args);
         write(client_sockfd, buf, strlen(buf));
-    }
-    else{
-        int connection, fd;
-        int pipefd[2];
-        int res;
-        const int buff_size = 8192;
-        char reply[100] = {0};
-        FILE *fp = fopen(args,"w");
-
-        if(fp==NULL){
-        /* TODO: write status message here! */
-            perror("file open failed!\n");
-            stpcpy(reply, "550 Failed to create file.\r\n");
-            write(client_sockfd, reply, strlen(reply));
+        // printf("file opened!\n"); 
+        while((bytes = read(datafd, databuff, BUFFER_MAX)) > 0)
+        {
+            write(fileno(downfile), databuff, bytes);
         }
-        /* Passive mode */
-        else{
-            fd = fileno(fp);
-            connection = accept(data_sock,(struct sockaddr*) &client_addr,&client_addr_len);;
-            close(data_sock);
-            if(pipe(pipefd)==-1)
-            {
-                perror("pipe create failed!\n");
-                stpcpy(reply, "550 Failed to open pipe.\r\n");
-                write(client_sockfd, reply, strlen(reply));
-            }
-            else
-            {
-                stpcpy(reply, "150 Ok to send data.\r\n");
-                write(client_sockfd, reply, strlen(reply));
-                // printf("Begin transfering data.....\n");
 
-                /* Using splice function for file receiving.
-                * The splice() system call first appeared in Linux 2.6.17.
-                */
-
-                while ((res = splice(connection, 0, pipefd[1], NULL, buff_size, SPLICE_F_MORE | SPLICE_F_MOVE))>0)
-                {
-                    splice(pipefd[0], NULL, fd, 0, buff_size, SPLICE_F_MORE | SPLICE_F_MOVE);
-                }
-
-                /* TODO: signal with ABOR command to exit */
-
-                /* Internal error */
-                if(res==-1){
-                    perror("splice file failed!\n");
-                    stpcpy(reply, "550 Failed to open pipe.\r\n");
-                    write(client_sockfd, reply, strlen(reply));
-                }
-                else{
-                    stpcpy(reply, "226 Transfer complete.\r\n");
-                    write(client_sockfd, reply, strlen(reply));
-                    // printf("Transfer success!\n");
-                }
-            }
-            close(connection);
-            close(fd);
-        }
+        fclose(downfile);
+        close(datafd);
+        stpcpy(buf, "226 Transfer complete\r\n");
+        // printf("file transfer complete!\n");
     }
+    write(client_sockfd, buf, strlen(buf));
+
 }
 
 int get_trans_data_fd(int client_sockfd){
@@ -748,16 +671,16 @@ int replace(char *str, char *olds, char *news, int max_length)
 }
 
 
-void handle_PASV(int client_sockfd){
+void handle_PASV(int client_sockfd, int datafd){
     
     char reply[100] = {0};
-    unsigned long port1, port2;
-    char p1[20], p2[20];
+    unsigned long port1,port2;
+    char p1[20],p2[20];
     srand(time(NULL));
-    port1 = 128 + (rand() % 64);
-    port2 = rand() % 0xff;
-    sprintf(p1, "%lu", port1);
-    sprintf(p2, "%lu", port2);
+    port1=128 + (rand() % 64);
+    port2=rand() % 0xff;
+    sprintf(p1,"%lu",port1);
+    sprintf(p2,"%lu",port2);
     memset(&data_addr, 0, sizeof(data_addr));
     data_addr.sin_family = AF_INET;
     data_addr.sin_addr.s_addr = INADDR_ANY;
@@ -786,98 +709,4 @@ void handle_PASV(int client_sockfd){
     write(client_sockfd, reply, strlen(reply));
     isPasv = 1;
     
-}
-
-//限速，计算睡眠时间，第二个参数是当前传输的字节数
-void limit_rate(int bytes_transfered, int is_upload)
-{ 
-	// 睡眠时间=（当前传输速度/最大传输速度-1）*当前传输时间;
-	long curr_sec = get_time_sec();
-	long curr_usec = get_time_usec();
- 
-	//流过的时间，当前所用的传输时间
-	double elapsed;
-	elapsed = (double)(curr_sec - bw_transfer_start_sec);
-	//秒+微秒
-	elapsed += (double)(curr_usec - bw_transfer_start_usec) / (double)1000000;
-	if (elapsed <= (double)0) {//等于0的情况有可能，因为传的太快了
-		elapsed = (double)0.01;
-	}
- 
- 
-	// 计算当前传输速度，传输的量除以传输时间,忽略了传输速度的小数部分
-	unsigned int bw_rate = (unsigned int)((double)bytes_transfered / elapsed);
- 
-	double rate_ratio;
-	//上传
-	if (is_upload) {
-		//当前速度小于上传速度
-		if (bw_rate <= bw_upload_rate_max) {
-			// 不需要限速，也需要更新时间
-			bw_transfer_start_sec = curr_sec;
-			bw_transfer_start_usec = curr_usec;
-			return;
-		}
- 
-		//根据公式进行计算
-		rate_ratio = bw_rate / bw_upload_rate_max;
-	}
-	//下载
-	else {
-		if (bw_rate <= bw_download_rate_max) {
-			//不需要限速 
-			bw_transfer_start_sec = curr_sec;
-			bw_transfer_start_usec = curr_usec;
-			return;
-		}
- 
-		rate_ratio = bw_rate / bw_download_rate_max;
-	}
- 
-	//计算睡眠时间
-	//睡眠时间=（当前传输速度/最大传输速度-1）*当前传输时间��;
-	double pause_time;
-	//需要睡眠的时间
-	pause_time = (rate_ratio - (double)1) * elapsed;
- 
-	//进行睡眠
-	nano_sleep(pause_time);
- 
-	//更新时间，下一次要开始传输的时间更新为当前时间
-	bw_transfer_start_sec = get_time_sec();
-	bw_transfer_start_usec = get_time_usec();
- 
-}
-
-
-int get_time_sec()
-{
-    if(gettimeofday(&tv, NULL) == -1)
-        exit(-1);
-    return tv.tv_sec;
-}
-
-int get_time_usec()
-{
-    return tv.tv_usec;
-}
-
-int nano_sleep(double t)
-{
-    int sec = (time_t)t;//取整数部分
-    int nsec = (t - sec) * 1000000000;
-    //int nanosleep(const struct timespec *req, struct timespec *rem);
-    struct timespec ts;
-    ts.tv_sec = sec;
-    ts.tv_nsec = nsec;
-
-    int ret;
-    do
-    {//当睡眠被打断时，剩余时间放到ts里面
-        ret = nanosleep(&ts, &ts);
-    }
-    while(ret == -1 && errno == EINTR)
-        ;
-
-    return ret;
 }
