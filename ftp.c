@@ -34,6 +34,7 @@ struct sockaddr_in client_addr, data_addr;
 socklen_t client_addr_len, data_addr_len;
 struct sockaddr_in *p_addr; //port模式下对方的ip和port
 int ascii_mode = 1;
+const char *mode[] = {"BINARY","ASCII"};
 int isLogin = 0;
 int isPasv = 0;
 int data_sock;
@@ -89,12 +90,12 @@ int main(int argc, char** argv){
 
     socklen_t socket_len = sizeof(client_addr);
     if((client_sockfd = accept(server_sockfd, (struct sockaddr*)&client_addr, &socket_len)) == -1){
-            printf("accept socket error: %s(errno: %d)",strerror(errno),errno);
-            exit(-1);
+        printf("accept socket error: %s(errno: %d)", strerror(errno), errno);
+        exit(-1);
     }
     printf("Accept client %s on TCP port %d\n", inet_ntoa(client_addr.sin_addr),ntohs(client_addr.sin_port));
     			
-    memset(buffer,0,sizeof(buffer));
+    memset(buffer, 0, sizeof(buffer));
     char reply[] = "220 please enter username\r\n";
     write(client_sockfd, reply, sizeof(reply));
 
@@ -170,7 +171,7 @@ int tcp_server(){
 
     //创建一个监听fd
     if((listenfd = socket(AF_INET, SOCK_STREAM, 0)) == -1){
-        printf("create socket error: %s(errno: %d)\n",strerror(errno),errno);
+        printf("create socket error: %s(errno: %d)\n", strerror(errno), errno);
         return 0;
     }
 
@@ -179,12 +180,12 @@ int tcp_server(){
     seraddr.sin_port = htons(21);
 
     if(bind(listenfd, (struct sockaddr*)&seraddr, sizeof(seraddr)) == -1){
-        printf("bind socket error: %s(errno: %d)\n",strerror(errno),errno);
+        printf("bind socket error: %s(errno: %d)\n", strerror(errno), errno);
         return 0;
     }
 
     if(listen(listenfd, 10) == -1){
-        printf("listen socket error: %s(errno: %d)\n",strerror(errno),errno);
+        printf("listen socket error: %s(errno: %d)\n", strerror(errno), errno);
         return 0;
     }
     return listenfd;
@@ -340,7 +341,7 @@ void handle_LIST(int client_sockfd, char dirname[]){
     }
     else
     {
-        memset(databuf, 0, PIPE_BUF - 1);
+        memset(databuf, 0, PIPE_BUF - 1); // PIPE_BUF为4096字节
         while((n = read(fileno(listopen), databuf, PIPE_BUF)) > 0)
         {	
             replace(databuf, "\n", "\r\n", PIPE_BUF-1);
@@ -426,7 +427,8 @@ void handle_RNTO(int client_sockfd, char *args){
 
     if(rename(rnfr_name, args) == -1)
     {
-        sprintf(buf, "550 RRename failed.\r\n");
+        printf("Rename Failed.\n");
+        sprintf(buf, "550 Rename failed.\r\n");
         write(client_sockfd, buf, strlen(buf));
         return;
     }
@@ -450,27 +452,23 @@ void handle_RETR(int client_sockfd, char *args){
     if(isPasv==0){
         int datafd = get_trans_data_fd(client_sockfd);
 
-        FILE *upfile;
+        FILE *file;
         unsigned char databuff[BUFFER_MAX] = "";
         int bytes;
 
         char reply[] = "226 Transfer complete\r\n";
 
-        upfile = fopen(args,"r");
-        if(upfile == 0)
+        file = fopen(args, "r");
+        if(file == 0)
         {
             perror("file open failed.\n");
             stpcpy(reply, "550 Failed to open file.\r\n");
         }
         else
         {
-            char mode[] = "ASCII";
-            if(ascii_mode==0){
-                sprintf(mode, "BINARY");
-            }
-            sprintf(reply, "150 Opening %s mode data connection for %s.\r\n", mode, args);
+            sprintf(reply, "150 Opening %s mode data connection for %s.\r\n", mode[ascii_mode], args);
             write(client_sockfd, reply, strlen(reply));
-            while((bytes = read(fileno(upfile), databuff, BUFFER_MAX)) > 0)
+            while((bytes = read(fileno(file), databuff, BUFFER_MAX)) > 0)
             {
                 if(ascii_mode==1)
                 {
@@ -487,7 +485,7 @@ void handle_RETR(int client_sockfd, char *args){
             }
             memset(&databuff, 0, BUFFER_MAX);
 
-            fclose(upfile);
+            fclose(file);
             stpcpy(reply, "226 Transfer complete\r\n");
             // printf("file transfer complete!\n");
         }
@@ -503,8 +501,8 @@ void handle_RETR(int client_sockfd, char *args){
         char reply[100] = {0};
 
         client_addr_len = sizeof(client_addr);
-        if(access(args,R_OK)==0 && (fd = open(args,O_RDONLY))){
-            fstat(fd,&stat_buf);
+        if(access(args, R_OK)==0 && (fd = open(args, O_RDONLY))){
+            fstat(fd, &stat_buf); // 复制文件状态到stat_buf中
 
             stpcpy(reply, "150 Opening BINARY mode data connection for ");
             strcat(reply, args);
@@ -512,7 +510,7 @@ void handle_RETR(int client_sockfd, char *args){
             // printf("file transfer begin!\n");
             write(client_sockfd, reply, strlen(reply));
 
-            connection=accept(data_sock,(struct sockaddr*) &client_addr,&client_addr_len);
+            connection = accept(data_sock, (struct sockaddr*) &client_addr, &client_addr_len);
         
             close(data_sock);
             if(sent_total = sendfile(connection, fd, &offset, stat_buf.st_size)){
@@ -567,11 +565,7 @@ void handle_STOR(int client_sockfd, char* args){
         }
         else
         {
-            char mode[] = "ASCII";
-            if(ascii_mode==0){
-                sprintf(mode, "BINARY");
-            }
-            sprintf(buf, "150 Opening %s mode data connection for %s.\r\n", mode, args);
+            sprintf(buf, "150 Opening %s mode data connection for %s.\r\n", mode[ascii_mode], args);
             write(client_sockfd, buf, strlen(buf));
             // printf("file opened!\n"); 
             while((bytes = read(datafd, databuff, BUFFER_MAX)) > 0)
@@ -662,7 +656,7 @@ int get_trans_data_fd(int client_sockfd){
     setsockopt(sock_cli, SOL_SOCKET, SO_REUSEADDR, (const void *)&opt, sizeof(opt));
 
     if(bind(sock_cli, (struct sockaddr*)&srvraddr, sizeof(srvraddr))<0){
-        printf("bind socket error: %s(errno: %d)\n",strerror(errno),errno);
+        printf("bind socket error: %s(errno: %d)\n", strerror(errno), errno);
         return 0;
     }
 
@@ -722,15 +716,13 @@ int replace(char *str, char *olds, char *news, int max_length)
     new_length = strlen(news);
     str_length = strlen(str);
     //*bar = str;
-    foo = strstr(bar, olds);
-    /* keep replacing if there is somethign to replace and it
-    will no over-flow
-    */
+    foo = strstr(bar, olds); // 检索子字符串首次出现的位置
+    /* keep replacing if there is something to replace and it will no over-flow */
     while ( (foo) && ( (str_length + new_length - old_length) < (max_length - 1) ) ) 
     {
 	bar = foo + strlen(news);
-	memmove(bar, foo + strlen(olds), strlen(foo + strlen(news)) + 1);
-	memcpy(foo, news, strlen(news));//by����foo
+	memmove(bar, foo + strlen(olds), strlen(foo + strlen(news)) + 1); // 复制后面
+	memcpy(foo, news, strlen(news)); // 填空缺的
 	i++;
 	foo = strstr(bar, olds);
 	str_length = strlen(str);
@@ -744,33 +736,34 @@ void handle_PASV(int client_sockfd){
     char reply[100] = {0};
     unsigned long port1, port2;
     char p1[20], p2[20];
+
     srand(time(NULL));
     port1 = 128 + (rand() % 64);
     port2 = rand() % 0xff;
     sprintf(p1, "%lu", port1);
     sprintf(p2, "%lu", port2);
+
     memset(&data_addr, 0, sizeof(data_addr));
     data_addr.sin_family = AF_INET;
-    data_addr.sin_addr.s_addr = INADDR_ANY;
+    data_addr.sin_addr.s_addr = INADDR_ANY; // 本机地址
     data_addr.sin_port = htons((port1 << 8) + port2);
     data_sock = socket(PF_INET, SOCK_STREAM, 0);
     data_addr_len = sizeof(data_addr);
-
 
     if(data_sock==-1){
         perror("socket create failed!\n");
         stpcpy(reply, "500 Cannot connect to the data socket\r\n");
     }
-    else if(bind(data_sock,(struct sockaddr*) &data_addr, data_addr_len) < 0){
+    else if(bind(data_sock, (struct sockaddr*) &data_addr, data_addr_len) < 0){
         perror("bind error!\n");
         stpcpy(reply, "500 Cannot connect to the data socket\r\n");
     }
     else{
-        listen(data_sock,5);					
+        listen(data_sock, 5);					
         stpcpy(reply, "227 Entering Passive Mode (127,0,0,1,");
-        strcat(reply,p1);
-        strcat(reply,",");
-        strcat(reply,p2);
+        strcat(reply, p1);
+        strcat(reply, ",");
+        strcat(reply, p2);
         strcat(reply,").\r\n");
     }
 
@@ -779,7 +772,7 @@ void handle_PASV(int client_sockfd){
     
 }
 
-//限速，计算睡眠时间，第二个参数是当前传输的字节数
+//限速，计算睡眠时间，第一个参数是当前传输的字节数
 void limit_rate(int bytes_transfered, int is_upload)
 { 
 	// 睡眠时间=（当前传输速度/最大传输速度-1）*当前传输时间;
@@ -794,7 +787,6 @@ void limit_rate(int bytes_transfered, int is_upload)
 	if (elapsed <= (double)0) {//等于0的情况有可能，因为传的太快了
 		elapsed = (double)0.01;
 	}
- 
  
 	// 计算当前传输速度，传输的量除以传输时间,忽略了传输速度的小数部分
 	unsigned int bw_rate = (unsigned int)((double)bytes_transfered / elapsed);
@@ -867,8 +859,7 @@ int nano_sleep(double t)
     {//当睡眠被打断时，剩余时间放到ts里面
         ret = nanosleep(&ts, &ts);
     }
-    while(ret == -1 && errno == EINTR)
-        ;
+    while(ret == -1 && errno == EINTR);
 
     return ret;
 }
