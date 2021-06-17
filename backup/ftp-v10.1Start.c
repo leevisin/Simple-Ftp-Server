@@ -177,6 +177,10 @@ int tcp_server(){
     seraddr.sin_family = AF_INET;
     seraddr.sin_addr.s_addr = htonl(INADDR_ANY);
     seraddr.sin_port = htons(21);
+	
+    // //之后可以删除，主要是老是占用21号端口
+    // int opt = 1;
+    // setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&opt, sizeof(opt));
 
     if(bind(listenfd, (struct sockaddr*)&seraddr, sizeof(seraddr)) == -1){
         printf("bind socket error: %s(errno: %d)\n",strerror(errno),errno);
