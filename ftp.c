@@ -331,7 +331,7 @@ void handle_LIST(int client_sockfd, char dirname[]){
     char databuf[PIPE_BUF];
     int n;
 
-    listopen = popen("ls -l","r"); //popen()会调用fork()产生子进程，然后从子进程中调用/bin/sh -c 来执行参数command 的指令
+    listopen = popen("ls -l", "r"); //popen()会调用fork()产生子进程，然后从子进程中调用/bin/sh -c 来执行参数command 的指令
     if(listopen == 0)
     {
         perror("ls stream open failed!\n");
@@ -550,14 +550,14 @@ void handle_STOR(int client_sockfd, char* args){
     if(isPasv==0){
         int datafd = get_trans_data_fd(client_sockfd);
 
-        FILE *downfile;
+        FILE *file;
         unsigned char databuff[BUFFER_MAX];
         int bytes = 0;
 
         char buf[] = "226 Transfer complete\r\n";
 
-        downfile = fopen(args, "w");
-        if(downfile == 0)
+        file = fopen(args, "w");
+        if(file == 0)
         {
             perror("file open failed!\n");
             stpcpy(buf, "450 Cannot create the file\r\n");
@@ -573,10 +573,10 @@ void handle_STOR(int client_sockfd, char* args){
                 if(isLogin==0){
                     limit_rate(bytes, 1);
                 }
-                write(fileno(downfile), databuff, bytes);
+                write(fileno(file), databuff, bytes);
             }
 
-            fclose(downfile);
+            fclose(file);
             close(datafd);
             stpcpy(buf, "226 Transfer complete\r\n");
             // printf("file transfer complete!\n");
@@ -600,7 +600,7 @@ void handle_STOR(int client_sockfd, char* args){
         /* Passive mode */
         else{
             fd = fileno(fp);
-            connection = accept(data_sock,(struct sockaddr*) &client_addr,&client_addr_len);;
+            connection = accept(data_sock, (struct sockaddr*) &client_addr, &client_addr_len);;
             close(data_sock);
             if(pipe(pipefd)==-1)
             {
@@ -618,6 +618,7 @@ void handle_STOR(int client_sockfd, char* args){
                 * The splice() system call first appeared in Linux 2.6.17.
                 */
 
+               // ssize_t splice(int fd_in, loff_t *off_in, int fd_out, loff_t *off_out, size_t len, unsigned int flags);  
                 while ((res = splice(connection, 0, pipefd[1], NULL, buff_size, SPLICE_F_MORE | SPLICE_F_MOVE))>0)
                 {
                     splice(pipefd[0], NULL, fd, 0, buff_size, SPLICE_F_MORE | SPLICE_F_MOVE);
