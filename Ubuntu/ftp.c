@@ -275,7 +275,7 @@ void handle_PASS(int client_sockfd, char *args){
 }
 
 void handle_SYST(int client_sockfd){
-    char buf[] = "215 UNIX.\r\n";
+    char buf[] = "215 Remote system type is UNIX.\r\n";
     write(client_sockfd, buf, strlen(buf));
 }
 
