@@ -23,8 +23,8 @@
 #define BUFFER_MAX 4096
 #define COMMAND_MAX 1024
 #define SERVER_IP "127.0.0.1"
-#define bw_upload_rate_max 10
-#define bw_download_rate_max 10
+#define bw_upload_rate_max 1024
+#define bw_download_rate_max 1024
 
 char buffer[BUFFER_MAX];
 char username[100]; //用户名
@@ -253,9 +253,6 @@ void handle_PASS(int client_sockfd, char *args){
         write(client_sockfd, reply, strlen(reply));
         // printf("login successful!\n");
         isLogin=1;
-        //home---切换到主目录
-		if(chdir("/home/student") == -1)
-			exit(-1);
     }
     else
     {
@@ -263,6 +260,9 @@ void handle_PASS(int client_sockfd, char *args){
         write(client_sockfd, reply, strlen(reply));
         isLogin=0;
     }
+    //home---切换到主目录
+    if(chdir("/home/student") == -1)
+        exit(-1);
 
 }
 
@@ -446,11 +446,14 @@ void handle_QUIT(int client_sockfd){
 
 void handle_RETR(int client_sockfd, char *args){
 
+    // long startTime = get_time_sec();
     bw_transfer_start_sec = get_time_sec();
     bw_transfer_start_usec = get_time_usec();
 
     if(isPasv==0){
         int datafd = get_trans_data_fd(client_sockfd);
+
+
 
         FILE *file;
         unsigned char databuff[BUFFER_MAX] = "";
@@ -466,6 +469,7 @@ void handle_RETR(int client_sockfd, char *args){
         }
         else
         {
+
             sprintf(reply, "150 Opening %s mode data connection for %s.\r\n", mode[ascii_mode], args);
             write(client_sockfd, reply, strlen(reply));
             while((bytes = read(fileno(file), databuff, BUFFER_MAX)) > 0)
@@ -480,8 +484,10 @@ void handle_RETR(int client_sockfd, char *args){
                 {
                     write(datafd, (const char *)databuff, bytes);
                 }
+                printf("bytes: %d\n", bytes);
                 limit_rate(bytes, 0);
                 memset(&databuff, 0, BUFFER_MAX);
+                
             }
             memset(&databuff, 0, BUFFER_MAX);
 
@@ -489,7 +495,6 @@ void handle_RETR(int client_sockfd, char *args){
             stpcpy(reply, "226 Transfer complete\r\n");
             // printf("file transfer complete!\n");
         }
-
         close(datafd);
         write(client_sockfd, reply, strlen(reply));
     }
@@ -538,7 +543,7 @@ void handle_RETR(int client_sockfd, char *args){
         close(fd);
         close(connection);
     }
-    
+
 
 }
 
@@ -570,10 +575,7 @@ void handle_STOR(int client_sockfd, char* args){
             // printf("file opened!\n"); 
             while((bytes = read(datafd, databuff, BUFFER_MAX)) > 0)
             {
-                if(isLogin==0){
-                    limit_rate(bytes, 1);
-                }
-                write(fileno(file), databuff, bytes);
+                write(fileno(file), databuff, bytes);                
             }
 
             fclose(file);
@@ -793,6 +795,7 @@ void limit_rate(int bytes_transfered, int is_upload)
 	unsigned int bw_rate = (unsigned int)((double)bytes_transfered / elapsed);
  
 	double rate_ratio;
+    rate_ratio = -rate_ratio;
 	//上传
 	if (is_upload) {
 		//当前速度小于上传速度
@@ -812,12 +815,14 @@ void limit_rate(int bytes_transfered, int is_upload)
 			//不需要限速 
 			bw_transfer_start_sec = curr_sec;
 			bw_transfer_start_usec = curr_usec;
+            printf("Speed: %d bytes/s", bw_rate);
 			return;
 		}
  
 		rate_ratio = bw_rate / bw_download_rate_max;
+        printf("Speed: %d bytes/s\n", bw_download_rate_max);
 	}
- 
+    
 	//计算睡眠时间
 	//睡眠时间=（当前传输速度/最大传输速度-1）*当前传输时间;
 	double pause_time;
