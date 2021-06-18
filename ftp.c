@@ -23,7 +23,7 @@
 #define BUFFER_MAX 4096
 #define COMMAND_MAX 1024
 #define SERVER_IP "127.0.0.1"
-#define bw_upload_rate_max 0 // 0表示不限速
+#define bw_upload_rate_max -1 // -1表示不限速
 #define bw_download_rate_max 1024
 
 char buffer[BUFFER_MAX];
@@ -484,7 +484,7 @@ void handle_RETR(int client_sockfd, char *args){
                 {
                     write(datafd, (const char *)databuff, bytes);
                 }
-                printf("150 Opening %s mode data connection for %s (%d bytes).", mode[ascii_mode], args, bytes);
+                printf("File Name: %s, Bytes: %d, ", args, bytes);
                 limit_rate(bytes, 0);
                 memset(&databuff, 0, BUFFER_MAX);
                 
@@ -576,7 +576,7 @@ void handle_STOR(int client_sockfd, char* args){
             while((bytes = read(datafd, databuff, BUFFER_MAX)) > 0)
             {
                 write(fileno(file), databuff, bytes);
-                printf("150 Opening %s mode data connection for %s (%d bytes).", mode[ascii_mode], args, bytes);
+                printf("File Name: %s, Bytes: %d, ", args, bytes);
                 limit_rate(bytes, 1);
             }
 
@@ -801,16 +801,17 @@ void limit_rate(int bytes_transfered, int is_upload)
 	//上传
 	if (is_upload) {
 		//当前速度小于上传速度
-		if (bw_rate <= bw_upload_rate_max || bw_upload_rate_max==0) {
+		if (bw_rate <= bw_upload_rate_max || bw_upload_rate_max==-1) {
 			// 不需要限速，也需要更新时间
 			bw_transfer_start_sec = curr_sec;
 			bw_transfer_start_usec = curr_usec;
-            printf("Speed: %d bytes/s", bw_rate);
+            printf("Speed: %d kB/s\n", bw_rate / 1024);
 			return;
 		}
-		//根据公式进行计算
-		rate_ratio = bw_rate / bw_upload_rate_max;
-        printf("Speed: %d bytes/s\n", bw_download_rate_max);
+        //根据公式进行计算
+        rate_ratio = bw_rate / bw_upload_rate_max;
+        printf("Speed: %d kB/s\n", bw_download_rate_max / 1024);
+
 	}
 	//下载
 	else {
@@ -818,11 +819,12 @@ void limit_rate(int bytes_transfered, int is_upload)
 			//不需要限速 
 			bw_transfer_start_sec = curr_sec;
 			bw_transfer_start_usec = curr_usec;
-            printf("Speed: %d bytes/s", bw_rate);
+            printf("Speed: %d kB/s\n", bw_rate / 1024);
 			return;
 		}
-		rate_ratio = bw_rate / bw_download_rate_max;
-        printf("Speed: %d bytes/s\n", bw_download_rate_max);
+        rate_ratio = bw_rate / bw_download_rate_max;
+        printf("Speed: %d kB/s\n", bw_download_rate_max / 1024);
+
 	}
     
 	//计算睡眠时间
