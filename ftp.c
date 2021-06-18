@@ -23,7 +23,7 @@
 #define BUFFER_MAX 4096
 #define COMMAND_MAX 1024
 #define SERVER_IP "127.0.0.1"
-#define bw_upload_rate_max 1024
+#define bw_upload_rate_max 0 // 0表示不限速
 #define bw_download_rate_max 1024
 
 char buffer[BUFFER_MAX];
@@ -484,7 +484,7 @@ void handle_RETR(int client_sockfd, char *args){
                 {
                     write(datafd, (const char *)databuff, bytes);
                 }
-                printf("bytes: %d\n", bytes);
+                printf("150 Opening %s mode data connection for %s (%d bytes).", mode[ascii_mode], args, bytes);
                 limit_rate(bytes, 0);
                 memset(&databuff, 0, BUFFER_MAX);
                 
@@ -575,7 +575,9 @@ void handle_STOR(int client_sockfd, char* args){
             // printf("file opened!\n"); 
             while((bytes = read(datafd, databuff, BUFFER_MAX)) > 0)
             {
-                write(fileno(file), databuff, bytes);                
+                write(fileno(file), databuff, bytes);
+                printf("150 Opening %s mode data connection for %s (%d bytes).", mode[ascii_mode], args, bytes);
+                limit_rate(bytes, 1);
             }
 
             fclose(file);
@@ -795,30 +797,30 @@ void limit_rate(int bytes_transfered, int is_upload)
 	unsigned int bw_rate = (unsigned int)((double)bytes_transfered / elapsed);
  
 	double rate_ratio;
-    rate_ratio = -rate_ratio;
+
 	//上传
 	if (is_upload) {
 		//当前速度小于上传速度
-		if (bw_rate <= bw_upload_rate_max) {
+		if (bw_rate <= bw_upload_rate_max || bw_upload_rate_max==0) {
 			// 不需要限速，也需要更新时间
 			bw_transfer_start_sec = curr_sec;
 			bw_transfer_start_usec = curr_usec;
+            printf("Speed: %d bytes/s", bw_rate);
 			return;
 		}
- 
 		//根据公式进行计算
 		rate_ratio = bw_rate / bw_upload_rate_max;
+        printf("Speed: %d bytes/s\n", bw_download_rate_max);
 	}
 	//下载
 	else {
-		if (bw_rate <= bw_download_rate_max) {
+		if (bw_rate <= bw_download_rate_max || bw_download_rate_max==0) {
 			//不需要限速 
 			bw_transfer_start_sec = curr_sec;
 			bw_transfer_start_usec = curr_usec;
             printf("Speed: %d bytes/s", bw_rate);
 			return;
 		}
- 
 		rate_ratio = bw_rate / bw_download_rate_max;
         printf("Speed: %d bytes/s\n", bw_download_rate_max);
 	}
