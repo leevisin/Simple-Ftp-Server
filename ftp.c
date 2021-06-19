@@ -23,7 +23,7 @@
 #define BUFFER_MAX 4096
 #define COMMAND_MAX 1024
 #define SERVER_IP "127.0.0.1"
-#define bw_upload_rate_max -1 // -1表示不限速
+int bw_upload_rate_max = 2048; // -1表示不限速
 #define bw_download_rate_max 1024
 
 char buffer[BUFFER_MAX];
@@ -453,8 +453,6 @@ void handle_RETR(int client_sockfd, char *args){
     if(isPasv==0){
         int datafd = get_trans_data_fd(client_sockfd);
 
-
-
         FILE *file;
         unsigned char databuff[BUFFER_MAX] = "";
         int bytes;
@@ -577,6 +575,12 @@ void handle_STOR(int client_sockfd, char* args){
             {
                 write(fileno(file), databuff, bytes);
                 printf("File Name: %s, Bytes: %d, ", args, bytes);
+                if(isLogin==1){
+                    bw_upload_rate_max = -1;
+                }
+                else{
+                    bw_upload_rate_max = 2048;
+                }
                 limit_rate(bytes, 1);
             }
 
@@ -805,12 +809,12 @@ void limit_rate(int bytes_transfered, int is_upload)
 			// 不需要限速，也需要更新时间
 			bw_transfer_start_sec = curr_sec;
 			bw_transfer_start_usec = curr_usec;
-            printf("Speed: %d kB/s\n", bw_rate / 1024);
+            printf("Speed: %.2lf kB/s\n", (double)bw_rate / 1024);
 			return;
 		}
         //根据公式进行计算
         rate_ratio = bw_rate / bw_upload_rate_max;
-        printf("Speed: %d kB/s\n", bw_download_rate_max / 1024);
+        printf("Speed: %.2lf kB/s\n", (double)bw_upload_rate_max / 1024);
 
 	}
 	//下载
@@ -819,11 +823,11 @@ void limit_rate(int bytes_transfered, int is_upload)
 			//不需要限速 
 			bw_transfer_start_sec = curr_sec;
 			bw_transfer_start_usec = curr_usec;
-            printf("Speed: %d kB/s\n", bw_rate / 1024);
+            printf("Speed: %.2lf kB/s\n", (double)bw_rate / 1024);
 			return;
 		}
         rate_ratio = bw_rate / bw_download_rate_max;
-        printf("Speed: %d kB/s\n", bw_download_rate_max / 1024);
+        printf("Speed: %.2lf kB/s\n", (double)bw_download_rate_max / 1024);
 
 	}
     
