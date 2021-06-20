@@ -446,7 +446,6 @@ void handle_QUIT(int client_sockfd){
 
 void handle_RETR(int client_sockfd, char *args){
 
-    // long startTime = get_time_sec();
     bw_transfer_start_sec = get_time_sec();
     bw_transfer_start_usec = get_time_usec();
 
@@ -620,20 +619,12 @@ void handle_STOR(int client_sockfd, char* args){
             {
                 stpcpy(reply, "150 Ok to send data.\r\n");
                 write(client_sockfd, reply, strlen(reply));
-                // printf("Begin transfering data.....\n");
-
-                /* Using splice function for file receiving.
-                * The splice() system call first appeared in Linux 2.6.17.
-                */
 
                // ssize_t splice(int fd_in, loff_t *off_in, int fd_out, loff_t *off_out, size_t len, unsigned int flags);  
                 while ((res = splice(connection, 0, pipefd[1], NULL, buff_size, SPLICE_F_MORE | SPLICE_F_MOVE))>0)
                 {
                     splice(pipefd[0], NULL, fd, 0, buff_size, SPLICE_F_MORE | SPLICE_F_MOVE);
                 }
-
-                /* TODO: signal with ABOR command to exit */
-
                 /* Internal error */
                 if(res==-1){
                     perror("splice file failed!\n");
