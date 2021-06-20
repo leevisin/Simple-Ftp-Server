@@ -63,7 +63,6 @@ void handle_RETR(int, char *str);
 void handle_STOR(int, char *str);
 void handle_TYPE(int, char *str);
 void handle_PASV(int);
-int recv_fd(int sockfd);
 int get_trans_data_fd(int);
 int replace(char *str, char *olds, char *news, int max_length);
 void limit_rate(int bytes_transfered, int is_upload);
